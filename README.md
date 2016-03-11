@@ -57,6 +57,11 @@ chmod +x ./configure
 sudo make install
 ```
 
+PaulO: I found I had to back off other compile targets to get the configure command above to work. This worked for me:
+<pre>
+./configure --disable-gen-erl --disable-gen-hs --without-ruby --without-haskell --without-erlang --without-python --without-php
+</pre>
+
 ### Build Parquet with Maven
 
 Once protobuf and thrift are available in your path, you can build the project by running:

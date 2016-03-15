@@ -23,15 +23,11 @@ import static org.apache.parquet.format.Util.writeFileMetaData;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -62,6 +58,27 @@ import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName;
  *
  */
 public class ParquetFileWriter {
+
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  // in future commits, this is a class that lives in parquet-common
+  static class Strings {
+
+    public static String join(Iterable<String> s, String on) {
+      return join(s.iterator(), on);
+    }
+
+    public static String join(Iterator<String> iter, String on) {
+      StringBuilder sb = new StringBuilder();
+      while (iter.hasNext()) {
+        sb.append(iter.next());
+        if (iter.hasNext()) {
+          sb.append(on);
+        }
+      }
+      return sb.toString();
+    }
+
+  }
   private static final Log LOG = Log.getLog(ParquetFileWriter.class);
 
   public static final String PARQUET_METADATA_FILE = "_metadata";
@@ -203,7 +220,6 @@ public class ParquetFileWriter {
    * start a column inside a block
    * @param descriptor the column descriptor
    * @param valueCount the value count in this column
-   * @param statistics the statistics in this column
    * @param compressionCodecName
    * @throws IOException
    */
@@ -462,6 +478,125 @@ public class ParquetFileWriter {
    */
   public long getPos() throws IOException {
     return out.getPos();
+  }
+
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  public void appendFile(Configuration conf, Path file) throws IOException {
+    ParquetFileReader.open(conf, file).appendTo(this);
+  }
+
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  public void appendRowGroups(FSDataInputStream file, List<BlockMetaData> rowGroups, boolean dropColumns) throws IOException {
+    for (BlockMetaData block : rowGroups) {
+      appendRowGroup(file, block, dropColumns);
+    }
+  }
+
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  public void appendRowGroup(FSDataInputStream from, BlockMetaData rowGroup,
+                             boolean dropColumns) throws IOException {
+    startBlock(rowGroup.getRowCount());
+
+    Map<String, ColumnChunkMetaData> columnsToCopy =
+        new HashMap<String, ColumnChunkMetaData>();
+    for (ColumnChunkMetaData chunk : rowGroup.getColumns()) {
+      columnsToCopy.put(chunk.getPath().toDotString(), chunk);
+    }
+
+    List<ColumnChunkMetaData> columnsInOrder = new ArrayList<ColumnChunkMetaData>();
+
+    for (ColumnDescriptor descriptor : schema.getColumns()) {
+      String path = ColumnPath.get(descriptor.getPath()).toDotString();
+      ColumnChunkMetaData chunk = columnsToCopy.remove(path);
+      if (chunk != null) {
+        columnsInOrder.add(chunk);
+      } else {
+        throw new IllegalArgumentException(String.format(
+            "Missing column '%s', cannot copy row group: %s", path, rowGroup));
+      }
+    }
+
+    // complain if some columns would be dropped and that's not okay
+    if (!dropColumns && !columnsToCopy.isEmpty()) {
+      throw new IllegalArgumentException(String.format(
+          "Columns cannot be copied (missing from target schema): %s",
+          Strings.join(columnsToCopy.keySet(), ", ") ));
+    }
+
+    // copy the data for all chunks
+    long start = -1;
+    long length = 0;
+    long blockCompressedSize = 0;
+    for (int i = 0; i < columnsInOrder.size(); i += 1) {
+      ColumnChunkMetaData chunk = columnsInOrder.get(i);
+
+      // get this chunk's start position in the new file
+      long newChunkStart = out.getPos() + length;
+
+      // add this chunk to be copied with any previous chunks
+      if (start < 0) {
+        // no previous chunk included, start at this chunk's starting pos
+        start = chunk.getStartingPos();
+      }
+      length += chunk.getTotalSize();
+
+      if ((i + 1) == columnsInOrder.size() ||
+          columnsInOrder.get(i + 1).getStartingPos() != (start + length)) {
+            // not contiguous. do the copy now.
+        copy(from, out, start, length);
+            // reset to start at the next column chunk
+        start = -1;
+        length = 0;
+      }
+
+      currentBlock.addColumn(ColumnChunkMetaData.get(
+          chunk.getPath(),
+          chunk.getType(),
+          chunk.getCodec(),
+          chunk.getEncodings(),
+          chunk.getStatistics(),
+          newChunkStart,
+          newChunkStart,
+          chunk.getValueCount(),
+          chunk.getTotalSize(),
+          chunk.getTotalUncompressedSize()));
+
+      blockCompressedSize += chunk.getTotalSize();
+    }
+
+    currentBlock.setTotalByteSize(blockCompressedSize);
+    endBlock();
+  }
+
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  // Buffers for the copy function.
+  private static final ThreadLocal<byte[]> COPY_BUFFER =
+    new ThreadLocal<byte[]>() {
+      @Override
+      protected byte[] initialValue() {
+        return new byte[8192];
+      }
+    };
+
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  private static void copy(FSDataInputStream from, FSDataOutputStream to,
+                           long start, long length) throws IOException {
+    if (DEBUG) LOG.debug(
+        "Copying " + length + " bytes at " + start + " to " + to.getPos());
+    from.seek(start);
+    long bytesCopied = 0;
+    byte[] buffer = COPY_BUFFER.get();
+    while (bytesCopied < length) {
+      long bytesLeft = length - bytesCopied;
+      int bytesRead = from.read(buffer, 0,
+          (buffer.length < bytesLeft ? buffer.length : (int) bytesLeft));
+      if (bytesRead < 0) {
+        throw new IllegalArgumentException(
+            "Unexpected end of input file at " + start + bytesCopied);
+      }
+      to.write(buffer, 0, bytesRead);
+      bytesCopied += bytesRead;
+    }
   }
 
   /**

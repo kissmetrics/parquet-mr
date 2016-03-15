@@ -458,6 +458,12 @@ public class ParquetFileReader implements Closeable {
     this.codecFactory = new CodecFactory(configuration);
   }
 
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  static ParquetFileReader open(Configuration conf, Path file) throws IOException {
+    ParquetMetadata footer = readFooter(conf, file, NO_FILTER);
+    return new ParquetFileReader(conf, file, footer.getBlocks(), footer.getFileMetaData().getSchema().getColumns());
+  }
+
   /**
    * Reads all the columns requested from the row group at the current file position.
    * @throws IOException if an error occurs while reading
@@ -500,7 +506,10 @@ public class ParquetFileReader implements Closeable {
     return columnChunkPageReadStore;
   }
 
-
+  // 'hand cherry-picked' from commit b45c4bdb496381b5f90df6872edca12e0a2e68ca
+  public void appendTo(ParquetFileWriter writer) throws IOException {
+    writer.appendRowGroups(f, blocks, true);
+  }
 
   @Override
   public void close() throws IOException {

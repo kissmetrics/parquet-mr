@@ -18,6 +18,6 @@
 #
 # TODO: have to put the header here so 'rat' (whatever that is) doesn't complain ... :/
 
-mvn deploy:deploy-file -Durl=http://utility01.kissmetrics.com:8081/nexus/content/repositories/releases/ -Dfile=./parquet-hadoop/target/parquet-hadoop-km-1.7.0.jar -DpomFile=./parquet-hadoop/pom.xml -DrepositoryId=km-nexus
+mvn deploy:deploy-file -Durl=https://maven.kissmetrics.com/nexus/content/repositories/releases/ -Dfile=./parquet-hadoop/target/parquet-hadoop-km-1.7.0.jar -DpomFile=./parquet-hadoop/pom.xml -DrepositoryId=km-nexus
 
-mvn deploy:deploy-file -Durl=http://utility01.kissmetrics.com:8081/nexus/content/repositories/releases/ -Dfile=./parquet-avro/target/parquet-avro-km-1.7.0.jar -DpomFile=./parquet-avro/pom.xml -DrepositoryId=km-nexus
+mvn deploy:deploy-file -Durl=https://maven.kissmetrics.com/nexus/content/repositories/releases/ -Dfile=./parquet-avro/target/parquet-avro-km-1.7.0.jar -DpomFile=./parquet-avro/pom.xml -DrepositoryId=km-nexus

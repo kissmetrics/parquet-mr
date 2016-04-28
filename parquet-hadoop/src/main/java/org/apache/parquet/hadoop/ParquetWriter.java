@@ -176,6 +176,8 @@ public class ParquetWriter<T> implements Closeable {
         compressionCodecName, blockSize, pageSize, dictionaryPageSize,
         enableDictionary, validating, writerVersion, conf);
   }
+
+  final CodecFactory codecFactory;
   /**
    * Create a new ParquetWriter.
    *
@@ -212,7 +214,7 @@ public class ParquetWriter<T> implements Closeable {
         mode);
     fileWriter.start();
 
-    CodecFactory codecFactory = new CodecFactory(conf);
+    codecFactory = new CodecFactory(conf);
     CodecFactory.BytesCompressor compressor =	codecFactory.getCompressor(compressionCodecName, 0);
     this.writer = new InternalParquetRecordWriter<T>(
         fileWriter,
@@ -268,5 +270,6 @@ public class ParquetWriter<T> implements Closeable {
     } catch (InterruptedException e) {
       throw new IOException(e);
     }
+    codecFactory.release();
   }
 }

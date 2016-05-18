@@ -16,11 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.parquet.hadoop;
+package org.apache.parquet.hadoop.transform;
 
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.hadoop.ColumnTransformer;
 
 /**
  * Base class for standard column transformers

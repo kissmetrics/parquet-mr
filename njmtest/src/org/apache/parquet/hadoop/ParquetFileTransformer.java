@@ -19,19 +19,19 @@
 package org.apache.parquet.hadoop;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.parquet.column.ColumnDescriptor;
+import org.apache.parquet.column.*;
+import org.apache.parquet.column.impl.ColumnReadStoreImpl;
 import org.apache.parquet.column.page.*;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
-import org.apache.parquet.hadoop.metadata.ColumnPath;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
+import org.apache.parquet.io.api.Converter;
+import org.apache.parquet.io.api.GroupConverter;
+import org.apache.parquet.io.api.PrimitiveConverter;
 import org.apache.parquet.schema.MessageType;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,19 +43,17 @@ public class ParquetFileTransformer implements Closeable {
   private final Configuration conf;
   private final MessageType schema;
   private final Map<ColumnDescriptor, ColumnTransformer> transformers;
+  private ParquetProperties parquetProperties;
   private final CodecFactory codecFactory;
-  private final List<ColumnDescriptor> columns;
-  private final Map<ColumnPath, ColumnDescriptor> pathColumns = new HashMap<ColumnPath, ColumnDescriptor>();
 
   public ParquetFileTransformer(Configuration conf, MessageType schema,
-                                Map<ColumnDescriptor, ColumnTransformer> transformers) {
+                                Map<ColumnDescriptor, ColumnTransformer> transformers,
+                                ParquetProperties parquetProperties) {
     this.conf = conf;
     this.schema = schema;
     this.transformers = transformers;
+    this.parquetProperties = parquetProperties;
     this.codecFactory = new CodecFactory(conf);
-    columns = schema.getColumns();
-    for (ColumnDescriptor column : columns)
-      pathColumns.put(ColumnPath.get(column.getPath()), column);
   }
 
   @Override
@@ -76,7 +74,7 @@ public class ParquetFileTransformer implements Closeable {
                             Path outputFile, CompressionCodecName codecName,
                             int pageSize) throws IOException {
     ParquetFileReader fileReader =
-        new ParquetFileReader(conf, inputFile, blocks, columns);
+        new ParquetFileReader(conf, inputFile, blocks, schema.getColumns());
 
     CodecFactory.BytesCompressor compressor =
         codecFactory.getCompressor(codecName, pageSize);
@@ -87,31 +85,53 @@ public class ParquetFileTransformer implements Closeable {
     BlockMetaData block;
     while ((block = fileReader.getCurrentBlock()) != null) {
       List<ParquetFileReader.Chunk> chunks = fileReader.readChunks(block);
-      fileWriter.startBlock(block.getRowCount());
 
       ColumnChunkPageWriteStore pageWriteStore =
           new ColumnChunkPageWriteStore(compressor, schema, pageSize);
+      ColumnWriteStore columnWriteStore =
+          parquetProperties.newColumnWriteStore(schema, pageWriteStore, pageSize);
+
+      fileWriter.startBlock(block.getRowCount());
 
       for (ParquetFileReader.Chunk chunk : chunks) {
         ColumnDescriptor column = chunk.getColumnDescriptor();
 
         PageWriter pageWriter = pageWriteStore.getPageWriter(column);
-        PageWriterVisitor pageWriterVisitor = new PageWriterVisitor(pageWriter);
 
-        ParquetFileReader.ChunkPageSet chunkPageSet = chunk.readRawPages();
+        ColumnTransformer transformer = transformers.get(column);
+        if (transformer != null) {
+          ColumnChunkPageReadStore.ColumnChunkPageReader pageReader =
+              chunk.readAllPages();
 
-        DictionaryPage dictionaryPage = chunkPageSet.getDictionaryPage();
-        if (dictionaryPage != null)
-          pageWriter.writeDictionaryPage(dictionaryPage);
+          ColumnChunkPageReadStore pageReadStore =
+              new ColumnChunkPageReadStore(block.getRowCount());
+          pageReadStore.addColumn(column, pageReader);
 
-        for (DataPage dataPage : chunkPageSet.getDataPages())
-          try {
-            dataPage.accept(pageWriterVisitor);
-          } catch (PageWriteException e) {
-            throw (IOException)e.getCause();
-          }
+          ColumnReadStoreImpl columnReadStore =
+              new ColumnReadStoreImpl(pageReadStore, new NopGroupConverter(), schema);
+          ColumnReader columnReader = columnReadStore.getColumnReader(column);
+
+          ColumnWriter columnWriter = columnWriteStore.getColumnWriter(column);
+
+          transformer.transform(columnReader, columnWriter);
+        } else {
+          ParquetFileReader.ChunkPageSet chunkPageSet = chunk.readRawPages();
+          CopyPageVisitor visitor = new CopyPageVisitor(pageWriter);
+
+          DictionaryPage dictionaryPage = chunkPageSet.getDictionaryPage();
+          if (dictionaryPage != null)
+            pageWriter.writeDictionaryPage(dictionaryPage);
+
+          for (DataPage dataPage : chunkPageSet.getDataPages())
+            try {
+              dataPage.accept(visitor);
+            } catch (PageWriteException e) {
+              throw (IOException)e.getCause();
+            }
+        }
       }
 
+      columnWriteStore.flush();
       pageWriteStore.flushToFileWriter(fileWriter);
 
       fileWriter.endBlock();
@@ -121,11 +141,22 @@ public class ParquetFileTransformer implements Closeable {
     fileWriter.end(Collections.<String, String>emptyMap());
   }
 
-  private static class PageWriterVisitor implements DataPage.Visitor<Void> {
+  private static class NopConverter extends PrimitiveConverter {}
+
+  private static class NopGroupConverter extends GroupConverter {
+
+    private final NopConverter converter = new NopConverter();
+
+    @Override public Converter getConverter(int fieldIndex) { return converter; }
+    @Override public void start() {}
+    @Override public void end() {}
+  }
+
+  private static class CopyPageVisitor implements DataPage.Visitor<Void> {
 
     private final PageWriter pageWriter;
 
-    public PageWriterVisitor(PageWriter pageWriter) {
+    public CopyPageVisitor(PageWriter pageWriter) {
       this.pageWriter = pageWriter;
     }
 
@@ -157,7 +188,7 @@ public class ParquetFileTransformer implements Closeable {
     }
   }
 
-  // Wrapper for checked IOException of writeDataPage in visitor
+  // Wrapper for checked IOExceptions thrown by visitors
   private static class PageWriteException extends RuntimeException {
 
     public PageWriteException(IOException cause) {

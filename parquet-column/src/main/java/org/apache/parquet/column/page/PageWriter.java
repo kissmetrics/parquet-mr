@@ -33,6 +33,22 @@ import org.apache.parquet.column.statistics.Statistics;
 public interface PageWriter {
 
   /**
+   * writes a single compressed page
+   * @param compressedBytes compressed bytes for the page
+   * @param uncompressedSize size of the page when uncompressed
+   * @param valueCount number of valuaes in the page
+   * @param statistics statistics for the page
+   * @param rlEncoding repetition level encoding
+   * @param dlEncoding definition level encoding
+   * @param valuesEncoding values encoding
+   * @throws IOException
+   */
+  void writeCompressedPage(
+      BytesInput compressedBytes, int uncompressedSize, int valueCount,
+      Statistics<?> statistics, Encoding rlEncoding, Encoding dlEncoding,
+      Encoding valuesEncoding) throws IOException;
+
+  /**
    * writes a single page
    * @param bytesInput the bytes for the page
    * @param valueCount the number of values in that page

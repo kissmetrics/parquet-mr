@@ -45,7 +45,21 @@ public class MemPageWriter implements PageWriter {
   private long totalValueCount = 0;
 
   @Override
-  public void writePage(BytesInput bytesInput, int valueCount, Statistics statistics, Encoding rlEncoding, Encoding dlEncoding, Encoding valuesEncoding)
+  public void writeCompressedPage(BytesInput compressedBytes, int uncompressedSize,
+                                  int valueCount, Statistics<?> statistics,
+                                  Encoding rlEncoding, Encoding dlEncoding,
+                                  Encoding valuesEncoding) throws IOException {
+    if (valueCount == 0) {
+      throw new ParquetEncodingException("illegal page of 0 values");
+    }
+    memSize += compressedBytes.size();
+    pages.add(new DataPageV1(BytesInput.copy(compressedBytes), valueCount, uncompressedSize, statistics, rlEncoding, dlEncoding, valuesEncoding));
+    totalValueCount += valueCount;
+    if (DEBUG) LOG.debug("compressed page written for " + compressedBytes.size() + " bytes and " + valueCount + " records");
+  }
+
+  @Override
+  public void writePage(BytesInput bytesInput, int valueCount, Statistics<?> statistics, Encoding rlEncoding, Encoding dlEncoding, Encoding valuesEncoding)
       throws IOException {
     if (valueCount == 0) {
       throw new ParquetEncodingException("illegal page of 0 values");

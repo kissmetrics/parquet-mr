@@ -74,28 +74,19 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
     }
 
     @Override
-    public void writePage(BytesInput bytes,
-                          int valueCount,
-                          Statistics statistics,
-                          Encoding rlEncoding,
-                          Encoding dlEncoding,
-                          Encoding valuesEncoding) throws IOException {
-      long uncompressedSize = bytes.size();
-      if (uncompressedSize > Integer.MAX_VALUE) {
-        throw new ParquetEncodingException(
-            "Cannot write page larger than Integer.MAX_VALUE bytes: " +
-            uncompressedSize);
-      }
-      BytesInput compressedBytes = compressor.compress(bytes);
+    public void writeCompressedPage(BytesInput compressedBytes, int uncompressedSize,
+                                    int valueCount, Statistics<?> statistics,
+                                    Encoding rlEncoding, Encoding dlEncoding,
+                                    Encoding valuesEncoding) throws IOException {
       long compressedSize = compressedBytes.size();
       if (compressedSize > Integer.MAX_VALUE) {
         throw new ParquetEncodingException(
             "Cannot write compressed page larger than Integer.MAX_VALUE bytes: "
-            + compressedSize);
+                + compressedSize);
       }
       tempOutputStream.reset();
       parquetMetadataConverter.writeDataPageHeader(
-          (int)uncompressedSize,
+          uncompressedSize,
           (int)compressedSize,
           valueCount,
           statistics,
@@ -114,6 +105,24 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
       encodings.add(rlEncoding);
       encodings.add(dlEncoding);
       encodings.add(valuesEncoding);
+    }
+
+    @Override
+    public void writePage(BytesInput bytes,
+                          int valueCount,
+                          Statistics statistics,
+                          Encoding rlEncoding,
+                          Encoding dlEncoding,
+                          Encoding valuesEncoding) throws IOException {
+      long uncompressedSize = bytes.size();
+      if (uncompressedSize > Integer.MAX_VALUE) {
+        throw new ParquetEncodingException(
+            "Cannot write page larger than Integer.MAX_VALUE bytes: " +
+            uncompressedSize);
+      }
+      BytesInput compressedBytes = compressor.compress(bytes);
+      writeCompressedPage(compressedBytes, (int)uncompressedSize, valueCount,
+          statistics, rlEncoding, dlEncoding, valuesEncoding);
     }
 
     @Override

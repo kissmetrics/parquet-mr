@@ -71,6 +71,22 @@ public class MemPageWriter implements PageWriter {
   }
 
   @Override
+  public void writeCompressedPageV2(int rowCount, int nullCount, int valueCount,
+                                    BytesInput repetitionLevels, BytesInput definitionLevels,
+                                    Encoding dataEncoding, BytesInput compressedData,
+                                    int uncompressedSize, Statistics<?> statistics) throws IOException {
+    if (valueCount == 0) {
+      throw new ParquetEncodingException("illegal page of 0 values");
+    }
+    long size = repetitionLevels.size() + definitionLevels.size() + compressedData.size();
+    memSize += size;
+    DataPageV2.compressed(rowCount, nullCount, valueCount, repetitionLevels, definitionLevels,
+        dataEncoding, copy(compressedData), uncompressedSize, statistics);
+    totalValueCount += valueCount;
+    if (DEBUG) LOG.debug("compressed page written for " + size + " bytes and " + valueCount + " records");
+  }
+
+  @Override
   public void writePageV2(int rowCount, int nullCount, int valueCount,
       BytesInput repetitionLevels, BytesInput definitionLevels,
       Encoding dataEncoding, BytesInput data, Statistics<?> statistics) throws IOException {

@@ -126,18 +126,12 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
     }
 
     @Override
-    public void writePageV2(
-        int rowCount, int nullCount, int valueCount,
-        BytesInput repetitionLevels, BytesInput definitionLevels,
-        Encoding dataEncoding, BytesInput data,
-        Statistics<?> statistics) throws IOException {
+    public void writeCompressedPageV2(int rowCount, int nullCount, int valueCount,
+                                      BytesInput repetitionLevels, BytesInput definitionLevels,
+                                      Encoding dataEncoding, BytesInput compressedData,
+                                      int uncompressedSize, Statistics<?> statistics) throws IOException {
       int rlByteLength = toIntWithCheck(repetitionLevels.size());
       int dlByteLength = toIntWithCheck(definitionLevels.size());
-      int uncompressedSize = toIntWithCheck(
-          data.size() + repetitionLevels.size() + definitionLevels.size()
-      );
-      // TODO: decide if we compress
-      BytesInput compressedData = compressor.compress(data);
       int compressedSize = toIntWithCheck(
           compressedData.size() + repetitionLevels.size() + definitionLevels.size()
       );
@@ -160,12 +154,28 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
       // we only allocate one buffer to copy into instead of multiple.
       buf.collect(
           BytesInput.concat(
-            BytesInput.from(tempOutputStream),
-            repetitionLevels,
-            definitionLevels,
-            compressedData)
+              BytesInput.from(tempOutputStream),
+              repetitionLevels,
+              definitionLevels,
+              compressedData)
       );
       encodings.add(dataEncoding);
+    }
+
+    @Override
+    public void writePageV2(
+        int rowCount, int nullCount, int valueCount,
+        BytesInput repetitionLevels, BytesInput definitionLevels,
+        Encoding dataEncoding, BytesInput data,
+        Statistics<?> statistics) throws IOException {
+      int uncompressedSize = toIntWithCheck(
+          data.size() + repetitionLevels.size() + definitionLevels.size()
+      );
+      // TODO: decide if we compress
+      BytesInput compressedData = compressor.compress(data);
+      writeCompressedPageV2(rowCount, nullCount, valueCount, repetitionLevels,
+          definitionLevels, dataEncoding, compressedData, uncompressedSize,
+          statistics);
     }
 
     private int toIntWithCheck(long size) {

@@ -61,7 +61,7 @@ import org.apache.parquet.column.page.DataPageV1;
 import org.apache.parquet.column.page.DataPageV2;
 import org.apache.parquet.column.page.DictionaryPage;
 import org.apache.parquet.column.page.PageReadStore;
-import org.apache.parquet.hadoop.metadata.ColumnPath;
+import org.apache.parquet.hadoop.metadata.*;
 import org.apache.parquet.format.DataPageHeader;
 import org.apache.parquet.format.DataPageHeaderV2;
 import org.apache.parquet.format.DictionaryPageHeader;
@@ -71,9 +71,6 @@ import org.apache.parquet.format.converter.ParquetMetadataConverter;
 import org.apache.parquet.format.converter.ParquetMetadataConverter.MetadataFilter;
 import org.apache.parquet.hadoop.CodecFactory.BytesDecompressor;
 import org.apache.parquet.hadoop.ColumnChunkPageReadStore.ColumnChunkPageReader;
-import org.apache.parquet.hadoop.metadata.BlockMetaData;
-import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
-import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 import org.apache.parquet.hadoop.util.HiddenFileFilter;
 import org.apache.parquet.hadoop.util.counters.BenchmarkCounter;
 import org.apache.parquet.io.ParquetDecodingException;
@@ -555,6 +552,10 @@ public class ParquetFileReader implements Closeable {
       super(data);
       this.descriptor = descriptor;
       this.pos = offset;
+    }
+
+    ColumnDescriptor getColumnDescriptor() {
+      return descriptor.col;
     }
 
     protected PageHeader readPageHeader() throws IOException {

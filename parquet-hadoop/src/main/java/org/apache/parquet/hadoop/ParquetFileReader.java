@@ -464,13 +464,14 @@ public class ParquetFileReader implements Closeable {
     return new ParquetFileReader(conf, file, footer.getBlocks(), footer.getFileMetaData().getSchema().getColumns());
   }
 
-  List<ConsecutiveChunkList> readChunks(BlockMetaData block) throws IOException {
+  List<Chunk> readChunks(BlockMetaData block) throws IOException {
     if (block.getRowCount() == 0) {
       throw new RuntimeException("Illegal row group of 0 rows");
     }
     // prepare the list of consecutive chunks to read them in one scan
     List<ConsecutiveChunkList> allChunks = new ArrayList<ConsecutiveChunkList>();
     ConsecutiveChunkList currentChunks = null;
+    int chunkCount = 0;
     for (ColumnChunkMetaData mc : block.getColumns()) {
       ColumnPath pathKey = mc.getPath();
       BenchmarkCounter.incrementTotalBytes(mc.getTotalSize());
@@ -483,9 +484,18 @@ public class ParquetFileReader implements Closeable {
           allChunks.add(currentChunks);
         }
         currentChunks.addChunk(new ChunkDescriptor(columnDescriptor, mc, startingPos, (int)mc.getTotalSize()));
+        chunkCount++;
       }
     }
-    return allChunks;
+    // actually read all the chunks
+    List<Chunk> chunkList = new ArrayList<Chunk>(chunkCount);
+    for (ConsecutiveChunkList consecutiveChunks : allChunks) {
+      final List<Chunk> chunks = consecutiveChunks.readAll(f);
+      for (Chunk chunk : chunks) {
+        chunkList.add(chunk);
+      }
+    }
+    return chunkList;
   }
 
   BlockMetaData getCurrentBlock() {
@@ -507,14 +517,8 @@ public class ParquetFileReader implements Closeable {
       return null;
     }
     ColumnChunkPageReadStore columnChunkPageReadStore = new ColumnChunkPageReadStore(block.getRowCount());
-    // prepare the list of consecutive chunks to read them in one scan
-    List<ConsecutiveChunkList> allChunks = readChunks(block);
-    // actually read all the chunks
-    for (ConsecutiveChunkList consecutiveChunks : allChunks) {
-      final List<Chunk> chunks = consecutiveChunks.readAll(f);
-      for (Chunk chunk : chunks) {
-        columnChunkPageReadStore.addColumn(chunk.descriptor.col, chunk.readAllPages());
-      }
+    for (Chunk chunk : readChunks(block)) {
+      columnChunkPageReadStore.addColumn(chunk.descriptor.col, chunk.readAllPages());
     }
     advanceBlock();
     return columnChunkPageReadStore;
@@ -665,7 +669,7 @@ public class ParquetFileReader implements Closeable {
    * @author Julien Le Dem
    *
    */
-  class WorkaroundChunk extends Chunk {
+  private class WorkaroundChunk extends Chunk {
 
     private final FSDataInputStream f;
 
@@ -767,7 +771,7 @@ public class ParquetFileReader implements Closeable {
    *
    * @author Julien Le Dem
    */
-  class ConsecutiveChunkList {
+  private class ConsecutiveChunkList {
 
     private final long offset;
     private int length;

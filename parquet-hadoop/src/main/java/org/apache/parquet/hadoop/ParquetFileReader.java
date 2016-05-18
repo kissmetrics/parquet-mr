@@ -488,16 +488,24 @@ public class ParquetFileReader implements Closeable {
     return allChunks;
   }
 
+  BlockMetaData getCurrentBlock() {
+    return (currentBlock >= blocks.size()) ? null : blocks.get(currentBlock);
+  }
+
+  void advanceBlock() {
+    ++currentBlock;
+  }
+
   /**
    * Reads all the columns requested from the row group at the current file position.
    * @throws IOException if an error occurs while reading
    * @return the PageReadStore which can provide PageReaders for each column.
    */
   public PageReadStore readNextRowGroup() throws IOException {
-    if (currentBlock == blocks.size()) {
+    BlockMetaData block = getCurrentBlock();
+    if (block == null) {
       return null;
     }
-    BlockMetaData block = blocks.get(currentBlock);
     ColumnChunkPageReadStore columnChunkPageReadStore = new ColumnChunkPageReadStore(block.getRowCount());
     // prepare the list of consecutive chunks to read them in one scan
     List<ConsecutiveChunkList> allChunks = readChunks(block);
@@ -508,7 +516,7 @@ public class ParquetFileReader implements Closeable {
         columnChunkPageReadStore.addColumn(chunk.descriptor.col, chunk.readAllPages());
       }
     }
-    ++currentBlock;
+    advanceBlock();
     return columnChunkPageReadStore;
   }
 

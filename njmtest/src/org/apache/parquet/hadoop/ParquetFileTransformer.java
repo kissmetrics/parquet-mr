@@ -41,21 +41,16 @@ import java.util.Map;
 public class ParquetFileTransformer implements Closeable {
 
   private final Configuration conf;
-  private final Path inputFile;
   private final MessageType schema;
-  private final List<BlockMetaData> blocks;
   private final Map<ColumnDescriptor, ColumnTransformer> transformers;
   private final CodecFactory codecFactory;
   private final List<ColumnDescriptor> columns;
   private final Map<ColumnPath, ColumnDescriptor> pathColumns = new HashMap<ColumnPath, ColumnDescriptor>();
 
-  public ParquetFileTransformer(Configuration conf, Path inputFile,
-                                MessageType schema, List<BlockMetaData> blocks,
+  public ParquetFileTransformer(Configuration conf, MessageType schema,
                                 Map<ColumnDescriptor, ColumnTransformer> transformers) {
     this.conf = conf;
-    this.inputFile = inputFile;
     this.schema = schema;
-    this.blocks = blocks;
     this.transformers = transformers;
     this.codecFactory = new CodecFactory(conf);
     columns = schema.getColumns();
@@ -68,22 +63,23 @@ public class ParquetFileTransformer implements Closeable {
     codecFactory.release();
   }
 
-  private FSDataInputStream openInputStream() throws IOException {
-    FileSystem fileSystem = FileSystem.get(conf);
-    return fileSystem.open(inputFile);
-  }
-
   /**
-   * Transforms all pathColumns from the inputFile.
+   * Transforms the specified file.
    *
-   * @param outputFile Target inputFile for transformed output
+   * @param inputFile Input file to transform
+   * @param blocks Blocks for the input file
+   * @param outputFile Target file for transformed output
    * @param codecName Codec to compress transformed columns
    * @param pageSize Size of transformed pages
    */
-  public void transformFile(Path outputFile, CompressionCodecName codecName, int pageSize) throws IOException {
-    ParquetFileReader fileReader = new ParquetFileReader(conf, inputFile, blocks, columns);
+  public void transformFile(Path inputFile, List<BlockMetaData> blocks,
+                            Path outputFile, CompressionCodecName codecName,
+                            int pageSize) throws IOException {
+    ParquetFileReader fileReader =
+        new ParquetFileReader(conf, inputFile, blocks, columns);
 
-    CodecFactory.BytesCompressor compressor = codecFactory.getCompressor(codecName, pageSize);
+    CodecFactory.BytesCompressor compressor =
+        codecFactory.getCompressor(codecName, pageSize);
 
     ParquetFileWriter fileWriter = new ParquetFileWriter(conf, schema, outputFile);
     fileWriter.start();
@@ -93,7 +89,8 @@ public class ParquetFileTransformer implements Closeable {
       List<ParquetFileReader.Chunk> chunks = fileReader.readChunks(block);
       fileWriter.startBlock(block.getRowCount());
 
-      ColumnChunkPageWriteStore pageWriteStore = new ColumnChunkPageWriteStore(compressor, schema, pageSize);
+      ColumnChunkPageWriteStore pageWriteStore =
+          new ColumnChunkPageWriteStore(compressor, schema, pageSize);
 
       for (ParquetFileReader.Chunk chunk : chunks) {
         ColumnDescriptor column = chunk.getColumnDescriptor();

@@ -45,6 +45,7 @@ public class ParquetFileTransformer implements Closeable {
   private final Map<ColumnDescriptor, ColumnTransformer> transformers;
   private ParquetProperties parquetProperties;
   private final CodecFactory codecFactory;
+  private final NopGroupConverter recordConverter = new NopGroupConverter();
 
   public ParquetFileTransformer(Configuration conf, MessageType schema,
                                 Map<ColumnDescriptor, ColumnTransformer> transformers,
@@ -84,50 +85,22 @@ public class ParquetFileTransformer implements Closeable {
 
     BlockMetaData block;
     while ((block = fileReader.getCurrentBlock()) != null) {
-      List<ParquetFileReader.Chunk> chunks = fileReader.readChunks(block);
+      fileWriter.startBlock(block.getRowCount());
 
       ColumnChunkPageWriteStore pageWriteStore =
           new ColumnChunkPageWriteStore(compressor, schema, pageSize);
       ColumnWriteStore columnWriteStore =
           parquetProperties.newColumnWriteStore(schema, pageWriteStore, pageSize);
 
-      fileWriter.startBlock(block.getRowCount());
-
+      List<ParquetFileReader.Chunk> chunks = fileReader.readChunks(block);
       for (ParquetFileReader.Chunk chunk : chunks) {
         ColumnDescriptor column = chunk.getColumnDescriptor();
-
-        PageWriter pageWriter = pageWriteStore.getPageWriter(column);
-
         ColumnTransformer transformer = transformers.get(column);
-        if (transformer != null) {
-          ColumnChunkPageReadStore.ColumnChunkPageReader pageReader =
-              chunk.readAllPages();
-
-          ColumnChunkPageReadStore pageReadStore =
-              new ColumnChunkPageReadStore(block.getRowCount());
-          pageReadStore.addColumn(column, pageReader);
-
-          ColumnReadStoreImpl columnReadStore =
-              new ColumnReadStoreImpl(pageReadStore, new NopGroupConverter(), schema);
-          ColumnReader columnReader = columnReadStore.getColumnReader(column);
-
-          ColumnWriter columnWriter = columnWriteStore.getColumnWriter(column);
-
-          transformer.transform(columnReader, columnWriter);
-        } else {
-          ParquetFileReader.ChunkPageSet chunkPageSet = chunk.readRawPages();
-          CopyPageVisitor visitor = new CopyPageVisitor(pageWriter);
-
-          DictionaryPage dictionaryPage = chunkPageSet.getDictionaryPage();
-          if (dictionaryPage != null)
-            pageWriter.writeDictionaryPage(dictionaryPage);
-
-          for (DataPage dataPage : chunkPageSet.getDataPages())
-            try {
-              dataPage.accept(visitor);
-            } catch (PageWriteException e) {
-              throw (IOException)e.getCause();
-            }
+        if (transformer != null)
+          transformChunk(block, columnWriteStore, chunk, column, transformer);
+        else {
+          PageWriter pageWriter = pageWriteStore.getPageWriter(column);
+          copyChunk(chunk, pageWriter);
         }
       }
 
@@ -139,6 +112,40 @@ public class ParquetFileTransformer implements Closeable {
     }
 
     fileWriter.end(Collections.<String, String>emptyMap());
+  }
+
+  private void transformChunk(BlockMetaData block, ColumnWriteStore columnWriteStore,
+                              ParquetFileReader.Chunk chunk, ColumnDescriptor column,
+                              ColumnTransformer transformer) throws IOException {
+    ColumnChunkPageReadStore.ColumnChunkPageReader pageReader = chunk.readAllPages();
+
+    ColumnChunkPageReadStore pageReadStore =
+        new ColumnChunkPageReadStore(block.getRowCount());
+    pageReadStore.addColumn(column, pageReader);
+
+    ColumnReadStoreImpl columnReadStore =
+        new ColumnReadStoreImpl(pageReadStore, recordConverter, schema);
+    ColumnReader columnReader = columnReadStore.getColumnReader(column);
+
+    ColumnWriter columnWriter = columnWriteStore.getColumnWriter(column);
+
+    transformer.transform(columnReader, columnWriter);
+  }
+
+  private void copyChunk(ParquetFileReader.Chunk chunk, PageWriter pageWriter) throws IOException {
+    ParquetFileReader.ChunkPageSet chunkPageSet = chunk.readRawPages();
+    CopyPageVisitor visitor = new CopyPageVisitor(pageWriter);
+
+    DictionaryPage dictionaryPage = chunkPageSet.getDictionaryPage();
+    if (dictionaryPage != null)
+      pageWriter.writeDictionaryPage(dictionaryPage);
+
+    for (DataPage dataPage : chunkPageSet.getDataPages())
+      try {
+        dataPage.accept(visitor);
+      } catch (PageWriteException e) {
+        throw (IOException)e.getCause();
+      }
   }
 
   private static class NopConverter extends PrimitiveConverter {}

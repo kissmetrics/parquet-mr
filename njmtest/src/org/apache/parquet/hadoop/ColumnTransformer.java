@@ -30,10 +30,7 @@ public interface ColumnTransformer {
    * Writes a transformed column value.
    *
    * @param reader Reader from which to obtain the current value
-   * @param repetitionLevel Current repetition level
-   * @param definitionLevel Current definition level
    * @param writer Writer for the transformed value
    */
-  void transform(ColumnReader reader, int repetitionLevel, int definitionLevel,
-                 ColumnWriter writer);
+  void transform(ColumnReader reader, ColumnWriter writer);
 }

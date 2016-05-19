@@ -153,9 +153,10 @@ public class TestParquetFileTransformer {
     List<BlockMetaData> blocks = footer.getBlocks();
 
     ParquetFileTransformer transformer = new ParquetFileTransformer(
-        conf, schema, transformers, parquetProperties);
+        conf, schema, transformers, PAGE_SIZE, CODEC_NAME, DICTIONARY_PAGE_SIZE,
+        ENABLE_DICTIONARY, WRITER_VERSION);
     outputFile = new Path(testDir, "output.parquet");
-    transformer.transformFile(inputFile, blocks, outputFile, CODEC_NAME, PAGE_SIZE);
+    transformer.transformFile(inputFile, blocks, outputFile);
   }
 
   @Before

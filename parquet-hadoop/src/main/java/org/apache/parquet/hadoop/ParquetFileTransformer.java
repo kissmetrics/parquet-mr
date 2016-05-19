@@ -43,17 +43,23 @@ public class ParquetFileTransformer implements Closeable {
   private final Configuration conf;
   private final MessageType schema;
   private final Map<ColumnDescriptor, ColumnTransformer> transformers;
+  private final int pageSize;
+  private final CompressionCodecName codecName;
   private ParquetProperties parquetProperties;
   private final CodecFactory codecFactory;
   private final NopGroupConverter recordConverter = new NopGroupConverter();
 
   public ParquetFileTransformer(Configuration conf, MessageType schema,
                                 Map<ColumnDescriptor, ColumnTransformer> transformers,
-                                ParquetProperties parquetProperties) {
+                                int pageSize, CompressionCodecName codecName,
+                                int dictionaryPageSize, boolean enableDictionary,
+                                ParquetProperties.WriterVersion writerVersion) {
     this.conf = conf;
     this.schema = schema;
     this.transformers = transformers;
-    this.parquetProperties = parquetProperties;
+    this.pageSize = pageSize;
+    this.codecName = codecName;
+    this.parquetProperties = new ParquetProperties(dictionaryPageSize, writerVersion, enableDictionary);
     this.codecFactory = new CodecFactory(conf);
   }
 
@@ -68,12 +74,9 @@ public class ParquetFileTransformer implements Closeable {
    * @param inputFile Input file to transform
    * @param blocks Blocks for the input file
    * @param outputFile Target file for transformed output
-   * @param codecName Codec to compress transformed columns
-   * @param pageSize Size of transformed pages
    */
   public void transformFile(Path inputFile, List<BlockMetaData> blocks,
-                            Path outputFile, CompressionCodecName codecName,
-                            int pageSize) throws IOException {
+                            Path outputFile) throws IOException {
     ParquetFileReader fileReader =
         new ParquetFileReader(conf, inputFile, blocks, schema.getColumns());
 

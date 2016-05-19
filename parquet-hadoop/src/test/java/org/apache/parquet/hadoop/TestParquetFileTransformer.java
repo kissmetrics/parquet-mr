@@ -58,6 +58,7 @@ public class TestParquetFileTransformer {
   private static final int DICTIONARY_PAGE_SIZE = 512;
   private static final boolean ENABLE_DICTIONARY = true;
   private static final ParquetProperties.WriterVersion WRITER_VERSION = PARQUET_1_0;
+  private static final int RECORD_COUNT = 50;
 
   private final Configuration conf = new Configuration();
   private final MessageType schema = Types.buildMessage()
@@ -69,15 +70,14 @@ public class TestParquetFileTransformer {
   private final SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
   private final Random random = new Random();
   private Path testDir, inputFile, outputFile;
-  private List<Record> records;
 
-  class Record {
+  private class Record {
 
     final int id;
     final String uuid;
     final Integer timestamp;
 
-    public Record(int id, String uuid, Integer timestamp) {
+    Record(int id, String uuid, Integer timestamp) {
       this.id = id;
       this.uuid = uuid;
       this.timestamp = timestamp;
@@ -101,7 +101,7 @@ public class TestParquetFileTransformer {
     return new Record(id, uuid, timestamp);
   }
 
-  public void populateSourceFile() throws IOException {
+  private void populateSourceFile() throws IOException {
     testDir = new Path("target/tests/TestParquetFileTransformer/");
     enforceEmptyDir(conf, testDir);
     inputFile = new Path(testDir, "input.parquet");
@@ -111,21 +111,13 @@ public class TestParquetFileTransformer {
         inputFile, new GroupWriteSupport(), CODEC_NAME, BLOCK_SIZE, PAGE_SIZE,
         DICTIONARY_PAGE_SIZE, ENABLE_DICTIONARY, false, WRITER_VERSION, conf);
 
-    int recordCount = 50;
-    records = new ArrayList<Record>(recordCount);
-    for (int i = 0; i < recordCount; i++) {
-      Record record = randomRecord(i);
-      records.add(record);
-      writer.write(record.toGroup());
-    }
+    for (int i = 0; i < RECORD_COUNT; i++)
+      writer.write(randomRecord(i).toGroup());
 
     writer.close();
   }
 
-  public void transformFile() throws IOException {
-    ParquetProperties parquetProperties = new ParquetProperties(
-        DICTIONARY_PAGE_SIZE, WRITER_VERSION, ENABLE_DICTIONARY);
-
+  private void transformFile() throws IOException {
     List<ColumnDescriptor> columnDescriptors = schema.getColumns();
     ColumnDescriptor idColumn = columnDescriptors.get(0),
         uuidColumn = columnDescriptors.get(1);
@@ -181,8 +173,8 @@ public class TestParquetFileTransformer {
     }
   }
 
-  public void assertColumnsEquivalent(List<ColumnChunkMetaData> expected,
-                                      List<ColumnChunkMetaData> actual) {
+  private void assertColumnsEquivalent(List<ColumnChunkMetaData> expected,
+                                       List<ColumnChunkMetaData> actual) {
     assertEquals(expected.size(), actual.size());
     for (int i = 0; i < actual.size(); i += 1) {
       ColumnChunkMetaData current = actual.get(i);
@@ -196,8 +188,8 @@ public class TestParquetFileTransformer {
     }
   }
 
-  public void assertColumnMetadataEquivalent(ColumnChunkMetaData expected,
-                                             ColumnChunkMetaData actual) {
+  private void assertColumnMetadataEquivalent(ColumnChunkMetaData expected,
+                                              ColumnChunkMetaData actual) {
     assertEquals(expected.getPath(), expected.getPath());
     assertEquals(expected.getType(), actual.getType());
     assertEquals(expected.getCodec(), actual.getCodec());

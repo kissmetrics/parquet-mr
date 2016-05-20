@@ -37,6 +37,7 @@ import org.apache.parquet.Version;
 import org.apache.parquet.bytes.BytesInput;
 import org.apache.parquet.bytes.BytesUtils;
 import org.apache.parquet.column.ColumnDescriptor;
+import org.apache.parquet.column.Encoding;
 import org.apache.parquet.column.page.DictionaryPage;
 import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.hadoop.metadata.ColumnPath;
@@ -388,6 +389,36 @@ public class ParquetFileWriter {
     this.currentBlock.setTotalByteSize(currentBlock.getTotalByteSize() + uncompressedLength);
     this.uncompressedLength = 0;
     this.compressedLength = 0;
+  }
+
+  /**
+   * copies content verbatim from an existing column
+   */
+  public void appendColumn(ColumnDescriptor descriptor,
+                           byte[] buf, int offset, int length,
+                           CompressionCodecName compressionCodecName,
+                           Set<Encoding> encodings,
+                           Statistics statistics,
+                           long firstDataPage,
+                           long dictionaryPageOffset,
+                           long valueCount,
+                           long totalSize,
+                           long totalUncompressedSize) throws IOException {
+    state = state.startColumn();
+    if (DEBUG) LOG.debug(out.getPos() + ": copy column");
+    state = state.write();
+    out.write(buf, offset, length);
+    currentChunkPath = ColumnPath.get(descriptor.getPath());
+    currentChunkType = descriptor.getType();
+    currentChunkCodec = compressionCodecName;
+    currentEncodings = encodings;
+    currentStatistics = statistics;
+    currentChunkFirstDataPage = firstDataPage;
+    currentChunkDictionaryPageOffset = dictionaryPageOffset;
+    currentChunkValueCount = valueCount;
+    compressedLength = totalSize;
+    uncompressedLength = totalUncompressedSize;
+    endColumn();
   }
 
   /**

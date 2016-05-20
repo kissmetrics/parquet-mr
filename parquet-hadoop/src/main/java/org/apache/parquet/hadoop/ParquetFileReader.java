@@ -541,6 +541,7 @@ public class ParquetFileReader implements Closeable {
   class Chunk extends ByteArrayInputStream {
 
     private final ChunkDescriptor descriptor;
+    private final int offset;
 
     /**
      *
@@ -551,7 +552,7 @@ public class ParquetFileReader implements Closeable {
     public Chunk(ChunkDescriptor descriptor, byte[] data, int offset) {
       super(data);
       this.descriptor = descriptor;
-      this.pos = offset;
+      this.pos = this.offset = offset;
     }
 
     ColumnDescriptor getColumnDescriptor() {
@@ -662,6 +663,14 @@ public class ParquetFileReader implements Closeable {
       return r;
     }
 
+    public void appendTo(ParquetFileWriter fileWriter) throws IOException {
+      final ColumnChunkMetaData metadata = descriptor.metadata;
+      fileWriter.appendColumn(descriptor.col, buf, offset, descriptor.size,
+          metadata.getCodec(), metadata.getEncodings(), metadata.getStatistics(),
+          metadata.getFirstDataPageOffset(), metadata.getDictionaryPageOffset(),
+          metadata.getValueCount(), metadata.getTotalSize(),
+          metadata.getTotalUncompressedSize());
+    }
   }
 
   /**

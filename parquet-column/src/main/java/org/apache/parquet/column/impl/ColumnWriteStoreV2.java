@@ -22,12 +22,8 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.util.Collections.unmodifiableMap;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
-import java.util.TreeMap;
 
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnWriteStore;
@@ -54,7 +50,7 @@ public class ColumnWriteStoreV2 implements ColumnWriteStore {
   private int pageSizeThreshold;
 
   public ColumnWriteStoreV2(
-      MessageType schema,
+      List<ColumnDescriptor> targetColumns,
       PageWriteStore pageWriteStore,
       int pageSizeThreshold,
       ParquetProperties parquetProps) {
@@ -62,7 +58,7 @@ public class ColumnWriteStoreV2 implements ColumnWriteStore {
     this.pageSizeThreshold = pageSizeThreshold;
     this.thresholdTolerance = (long)(pageSizeThreshold * THRESHOLD_TOLERANCE_RATIO);
     Map<ColumnDescriptor, ColumnWriterV2> mcolumns = new TreeMap<ColumnDescriptor, ColumnWriterV2>();
-    for (ColumnDescriptor path : schema.getColumns()) {
+    for (ColumnDescriptor path : targetColumns) {
       PageWriter pageWriter = pageWriteStore.getPageWriter(path);
       mcolumns.put(path, new ColumnWriterV2(path, pageWriter, parquetProps, pageSizeThreshold));
     }
@@ -70,7 +66,12 @@ public class ColumnWriteStoreV2 implements ColumnWriteStore {
     this.writers = this.columns.values();
   }
 
-  public ColumnWriter getColumnWriter(ColumnDescriptor path) {
+  public ColumnWriteStoreV2(MessageType schema, PageWriteStore pageWriteStore,
+                            int pageSizeThreshold, ParquetProperties parquetProps) {
+    this(schema.getColumns(), pageWriteStore, pageSizeThreshold, parquetProps)
+  }
+
+    public ColumnWriter getColumnWriter(ColumnDescriptor path) {
     return columns.get(path);
   }
 

@@ -42,6 +42,7 @@ import org.apache.parquet.column.values.plain.FixedLenByteArrayPlainValuesWriter
 import org.apache.parquet.column.values.plain.PlainValuesWriter;
 import org.apache.parquet.column.values.rle.RunLengthBitPackingHybridValuesWriter;
 import org.apache.parquet.schema.MessageType;
+import java.util.List;
 
 /**
  * This class represents all the configurable Parquet properties.
@@ -219,7 +220,7 @@ public class ParquetProperties {
   }
 
   public ColumnWriteStore newColumnWriteStore(
-      MessageType schema,
+      List<ColumnDescriptor> columns,
       PageWriteStore pageStore,
       int pageSize) {
     switch (writerVersion) {
@@ -231,12 +232,19 @@ public class ParquetProperties {
           enableDictionary, writerVersion);
     case PARQUET_2_0:
       return new ColumnWriteStoreV2(
-          schema,
+          columns,
           pageStore,
           pageSize,
           new ParquetProperties(dictionaryPageSizeThreshold, writerVersion, enableDictionary));
     default:
       throw new IllegalArgumentException("unknown version " + writerVersion);
     }
+  }
+
+  public ColumnWriteStore newColumnWriteStore(
+      MessageType schema,
+      PageWriteStore pageStore,
+      int pageSize) {
+    return newColumnWriteStore(schema.getColumns(), pageStore, pageSize);
   }
 }

@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -237,13 +238,17 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
   }
 
   private final Map<ColumnDescriptor, ColumnChunkPageWriter> writers = new HashMap<ColumnDescriptor, ColumnChunkPageWriter>();
-  private final MessageType schema;
+  private final List<ColumnDescriptor> columns;
 
-  public ColumnChunkPageWriteStore(BytesCompressor compressor, MessageType schema, int pageSize) {
-    this.schema = schema;
-    for (ColumnDescriptor path : schema.getColumns()) {
+  public ColumnChunkPageWriteStore(BytesCompressor compressor, List<ColumnDescriptor> columns, int pageSize) {
+    this.columns = columns;
+    for (ColumnDescriptor path : columns) {
       writers.put(path,  new ColumnChunkPageWriter(path, compressor, pageSize));
     }
+  }
+
+  public ColumnChunkPageWriteStore(BytesCompressor compressor, MessageType schema, int pageSize) {
+    this(compressor, schema.getColumns(), pageSize);
   }
 
   @Override
@@ -252,7 +257,7 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
   }
 
   public void flushToFileWriter(ParquetFileWriter writer) throws IOException {
-    for (ColumnDescriptor path : schema.getColumns()) {
+    for (ColumnDescriptor path : columns) {
       ColumnChunkPageWriter pageWriter = writers.get(path);
       pageWriter.writeToFileWriter(writer);
     }

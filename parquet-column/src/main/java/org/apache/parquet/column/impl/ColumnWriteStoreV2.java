@@ -66,11 +66,6 @@ public class ColumnWriteStoreV2 implements ColumnWriteStore {
     this.writers = this.columns.values();
   }
 
-  public ColumnWriteStoreV2(MessageType schema, PageWriteStore pageWriteStore,
-                            int pageSizeThreshold, ParquetProperties parquetProps) {
-    this(schema.getColumns(), pageWriteStore, pageSizeThreshold, parquetProps)
-  }
-
     public ColumnWriter getColumnWriter(ColumnDescriptor path) {
     return columns.get(path);
   }

@@ -54,13 +54,14 @@ public class TestParquetFileTransformer {
 
   private static final CompressionCodecName CODEC_NAME = GZIP;
   private static final int BLOCK_SIZE = 1024;
-  private static final int PAGE_SIZE = 1024;
+  private static final int PAGE_SIZE = 512;
   private static final int DICTIONARY_PAGE_SIZE = 512;
   private static final boolean ENABLE_DICTIONARY = true;
   private static final ParquetProperties.WriterVersion WRITER_VERSION = PARQUET_1_0;
   private static final int RECORD_COUNT = 50;
 
   private final Configuration conf = new Configuration();
+
   private final MessageType schema = Types.buildMessage()
       .required(INT32).named("id")
       .required(BINARY).as(UTF8).named("uuid")
@@ -71,34 +72,15 @@ public class TestParquetFileTransformer {
   private final Random random = new Random();
   private Path testDir, inputFile, outputFile;
 
-  private class Record {
-
-    final int id;
-    final String uuid;
-    final Integer timestamp;
-
-    Record(int id, String uuid, Integer timestamp) {
-      this.id = id;
-      this.uuid = uuid;
-      this.timestamp = timestamp;
-    }
-
-    Group toGroup() {
-      Group group = groupFactory.newGroup()
-          .append("id", id)
-          .append("uuid", uuid);
-      if (timestamp != null)
-        group.append("timestamp", timestamp);
-      return group;
-    }
-  }
-
-  private Record randomRecord(int i) {
+  private Group randomRecord(int i) {
     int id = (i * 10) + random.nextInt(10);
     String uuid = UUID.randomUUID().toString();
-    Integer timestamp = (random.nextDouble() > 0.5) ?
-        1460000000 + random.nextInt(10000000) : null;
-    return new Record(id, uuid, timestamp);
+    Group group = groupFactory.newGroup()
+        .append("id", id)
+        .append("uuid", uuid);
+    if (random.nextDouble() > 0.5)
+      group.append("timestamp", 1460000000 + random.nextInt(10000000));
+    return group;
   }
 
   private void populateSourceFile() throws IOException {
@@ -112,7 +94,7 @@ public class TestParquetFileTransformer {
         DICTIONARY_PAGE_SIZE, ENABLE_DICTIONARY, false, WRITER_VERSION, conf);
 
     for (int i = 0; i < RECORD_COUNT; i++)
-      writer.write(randomRecord(i).toGroup());
+      writer.write(randomRecord(i));
 
     writer.close();
   }

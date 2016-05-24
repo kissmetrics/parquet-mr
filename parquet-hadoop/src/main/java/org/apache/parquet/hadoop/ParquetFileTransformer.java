@@ -146,7 +146,7 @@ public class ParquetFileTransformer implements Closeable {
     for (DataPage dataPage : chunkPageSet.getDataPages())
       try {
         dataPage.accept(visitor);
-      } catch (PageWriteException e) {
+      } catch (CopyPageVisitor.PageWriteException e) {
         throw (IOException)e.getCause();
       }
   }
@@ -160,49 +160,5 @@ public class ParquetFileTransformer implements Closeable {
     @Override public Converter getConverter(int fieldIndex) { return converter; }
     @Override public void start() {}
     @Override public void end() {}
-  }
-
-  private static class CopyPageVisitor implements DataPage.Visitor<Void> {
-
-    private final PageWriter pageWriter;
-
-    public CopyPageVisitor(PageWriter pageWriter) {
-      this.pageWriter = pageWriter;
-    }
-
-    @Override
-    public Void visit(DataPageV1 page) {
-      try {
-        pageWriter.writeCompressedPage(
-            page.getBytes(), page.getUncompressedSize(), page.getValueCount(),
-            page.getStatistics(), page.getRlEncoding(), page.getDlEncoding(),
-            page.getValueEncoding());
-      } catch (IOException e) {
-        throw new PageWriteException(e);
-      }
-      return null;
-    }
-
-    @Override
-    public Void visit(DataPageV2 page) {
-      try {
-        pageWriter.writeCompressedPageV2(
-            page.getRowCount(), page.getNullCount(), page.getValueCount(),
-            page.getRepetitionLevels(), page.getDefinitionLevels(),
-            page.getDataEncoding(), page.getData(), page.getUncompressedSize(),
-            page.getStatistics());
-      } catch (IOException e) {
-        e.printStackTrace();
-      }
-      return null;
-    }
-  }
-
-  // Wrapper for checked IOExceptions thrown by visitors
-  private static class PageWriteException extends RuntimeException {
-
-    public PageWriteException(IOException cause) {
-      super(cause);
-    }
   }
 }

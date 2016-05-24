@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * Writer of pages from column chunks to combined output
  */
-public class ParquetFilePageWriter {
+class ParquetFilePageWriter {
 
   private final MessageType schema;
   private final long rowGroupSize;
@@ -25,9 +25,9 @@ public class ParquetFilePageWriter {
   private final CompressionCodecName codecName;
   private final CodecFactory codecFactory;
 
-  public ParquetFilePageWriter(Configuration conf, MessageType schema,
-                               long rowGroupSize, int pageSize,
-                               CompressionCodecName codecName) {
+  ParquetFilePageWriter(Configuration conf, MessageType schema,
+                        long rowGroupSize, int pageSize,
+                        CompressionCodecName codecName) {
     this.schema = schema;
     this.rowGroupSize = rowGroupSize;
     this.pageSize = pageSize;
@@ -44,8 +44,8 @@ public class ParquetFilePageWriter {
    * @throws IllegalArgumentException if any column chunks include dictionary
    *                                  pages
    */
-  public void writePages(ParquetFileWriter fileWriter,
-                         Iterable<Chunk> chunks) throws IOException {
+  void writePages(ParquetFileWriter fileWriter,
+                  Iterable<Chunk> chunks) throws IOException {
     CodecFactory.BytesCompressor compressor =
         codecFactory.getCompressor(codecName, pageSize);
     ColumnChunkPageWriteStore pageWriteStore =

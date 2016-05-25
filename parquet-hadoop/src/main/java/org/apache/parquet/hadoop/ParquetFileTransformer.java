@@ -22,7 +22,13 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.column.*;
 import org.apache.parquet.column.impl.ColumnReadStoreImpl;
-import org.apache.parquet.column.page.*;
+import org.apache.parquet.column.page.CopyPageVisitor;
+import org.apache.parquet.column.page.DataPage;
+import org.apache.parquet.column.page.DictionaryPage;
+import org.apache.parquet.column.page.PageWriter;
+import org.apache.parquet.hadoop.ColumnChunkPageReadStore.ColumnChunkPageReader;
+import org.apache.parquet.hadoop.ParquetFileReader.Chunk;
+import org.apache.parquet.hadoop.ParquetFileReader.ChunkPageSet;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.io.api.Converter;
@@ -77,32 +83,32 @@ public class ParquetFileTransformer implements Closeable {
    */
   public void transformFile(Path inputFile, List<BlockMetaData> blocks,
                             Path outputFile) throws IOException {
-    ParquetFileReader fileReader =
+    final ParquetFileReader fileReader =
         new ParquetFileReader(conf, inputFile, blocks, schema.getColumns());
-
-    CodecFactory.BytesCompressor compressor =
+    final CodecFactory.BytesCompressor compressor =
         codecFactory.getCompressor(codecName, pageSize);
 
-    ParquetFileWriter fileWriter = new ParquetFileWriter(conf, schema, outputFile);
+    final ParquetFileWriter fileWriter =
+        new ParquetFileWriter(conf, schema, outputFile);
     fileWriter.start();
 
     BlockMetaData block;
     while ((block = fileReader.getCurrentBlock()) != null) {
       fileWriter.startBlock(block.getRowCount());
 
-      ColumnChunkPageWriteStore pageWriteStore =
+      final ColumnChunkPageWriteStore pageWriteStore =
           new ColumnChunkPageWriteStore(compressor, schema, pageSize);
-      ColumnWriteStore columnWriteStore =
+      final ColumnWriteStore columnWriteStore =
           parquetProperties.newColumnWriteStore(schema, pageWriteStore, pageSize);
 
-      List<ParquetFileReader.Chunk> chunks = fileReader.readChunks(block);
-      for (ParquetFileReader.Chunk chunk : chunks) {
-        ColumnDescriptor column = chunk.getColumnDescriptor();
-        ColumnTransformer transformer = transformers.get(column);
+      final List<Chunk> chunks = fileReader.readChunks(block);
+      for (Chunk chunk : chunks) {
+        final ColumnDescriptor column = chunk.getColumnDescriptor();
+        final ColumnTransformer transformer = transformers.get(column);
         if (transformer != null)
           transformChunk(block, columnWriteStore, chunk, column, transformer);
         else {
-          PageWriter pageWriter = pageWriteStore.getPageWriter(column);
+          final PageWriter pageWriter = pageWriteStore.getPageWriter(column);
           copyChunk(chunk, pageWriter);
         }
       }
@@ -117,29 +123,32 @@ public class ParquetFileTransformer implements Closeable {
     fileWriter.end(Collections.<String, String>emptyMap());
   }
 
-  private void transformChunk(BlockMetaData block, ColumnWriteStore columnWriteStore,
-                              ParquetFileReader.Chunk chunk, ColumnDescriptor column,
-                              ColumnTransformer transformer) throws IOException {
-    ColumnChunkPageReadStore.ColumnChunkPageReader pageReader = chunk.readAllPages();
+  private void transformChunk(BlockMetaData block,
+                              ColumnWriteStore columnWriteStore,
+                              Chunk chunk,
+                              ColumnDescriptor column,
+                              ColumnTransformer transformer)
+      throws IOException {
+    final ColumnChunkPageReader pageReader = chunk.readAllPages();
 
-    ColumnChunkPageReadStore pageReadStore =
+    final ColumnChunkPageReadStore pageReadStore =
         new ColumnChunkPageReadStore(block.getRowCount());
     pageReadStore.addColumn(column, pageReader);
 
-    ColumnReadStoreImpl columnReadStore =
+    final ColumnReadStoreImpl columnReadStore =
         new ColumnReadStoreImpl(pageReadStore, recordConverter, schema);
-    ColumnReader columnReader = columnReadStore.getColumnReader(column);
+    final ColumnReader columnReader = columnReadStore.getColumnReader(column);
 
-    ColumnWriter columnWriter = columnWriteStore.getColumnWriter(column);
+    final ColumnWriter columnWriter = columnWriteStore.getColumnWriter(column);
 
     transformer.transform(columnReader, columnWriter);
   }
 
-  private void copyChunk(ParquetFileReader.Chunk chunk, PageWriter pageWriter) throws IOException {
-    ParquetFileReader.ChunkPageSet chunkPageSet = chunk.readRawPages();
-    CopyPageVisitor visitor = new CopyPageVisitor(pageWriter);
+  private void copyChunk(Chunk chunk, PageWriter pageWriter) throws IOException {
+    final ChunkPageSet chunkPageSet = chunk.readRawPages();
+    final CopyPageVisitor visitor = new CopyPageVisitor(pageWriter);
 
-    DictionaryPage dictionaryPage = chunkPageSet.getDictionaryPage();
+    final DictionaryPage dictionaryPage = chunkPageSet.getDictionaryPage();
     if (dictionaryPage != null)
       pageWriter.writeDictionaryPage(dictionaryPage);
 

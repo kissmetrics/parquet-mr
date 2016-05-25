@@ -18,9 +18,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Writer of pages from column chunks to combined output
+ * Appender of pages from blocks into combined output
  */
-class ParquetFilePageWriter {
+class ParquetFilePageAppender {
 
   private final MessageType schema;
   private final long rowGroupSize;
@@ -28,9 +28,9 @@ class ParquetFilePageWriter {
   private final CompressionCodecName codecName;
   private final CodecFactory codecFactory;
 
-  ParquetFilePageWriter(Configuration conf, MessageType schema,
-                        long rowGroupSize, int pageSize,
-                        CompressionCodecName codecName) {
+  ParquetFilePageAppender(Configuration conf, MessageType schema,
+                          long rowGroupSize, int pageSize,
+                          CompressionCodecName codecName) {
     this.schema = schema;
     this.rowGroupSize = rowGroupSize;
     this.pageSize = pageSize;
@@ -39,18 +39,18 @@ class ParquetFilePageWriter {
   }
 
   /**
-   * Writes raw pages from the given column chunks.
+   * Appends raw pages from the given column chunks.
    *
-   * @param fileWriter File writer to which to write pages
+   * @param fileWriter File writer to which to append pages
    * @param fileReaders File readers from which to read chunks for blocks
    * @param blockLists Blocks for each file whose pages to append, which must
    *                   not make use of dictionary pages
    * @throws IllegalArgumentException if any column chunks include dictionary
    *                                  pages
    */
-  void writePages(ParquetFileWriter fileWriter,
-                  Iterable<ParquetFileReader> fileReaders,
-                  Iterable<List<BlockMetaData>> blockLists)
+  void appendPages(ParquetFileWriter fileWriter,
+                   Iterable<ParquetFileReader> fileReaders,
+                   Iterable<List<BlockMetaData>> blockLists)
       throws IOException {
     final CodecFactory.BytesCompressor compressor =
         codecFactory.getCompressor(codecName, pageSize);

@@ -24,7 +24,7 @@ import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.BINARY;
 import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32;
 import static org.junit.Assert.*;
 
-public class TestParquetFilePageWriter {
+public class TestParquetFilePageAppender {
 
   private static final CompressionCodecName CODEC_NAME = GZIP;
   private static final int BLOCK_SIZE = 2048;
@@ -39,7 +39,7 @@ public class TestParquetFilePageWriter {
 
   private final SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
   private Path testDir;
-  private ParquetFilePageWriter pageWriter;
+  private ParquetFilePageAppender pageAppender;
 
   private Group makeRecord(int id, String name) {
     return groupFactory.newGroup().append("id", id).append("name", name);
@@ -60,14 +60,14 @@ public class TestParquetFilePageWriter {
     return footer.getBlocks();
   }
 
-  private Path writeOutput(List<ParquetFileReader> fileReaders,
+  private Path appendPages(List<ParquetFileReader> fileReaders,
                            List<List<BlockMetaData>> blockLists)
       throws IOException {
     Path outputFile = new Path(testDir, "output.parquet");
     ParquetFileWriter fileWriter = new ParquetFileWriter(conf, schema, outputFile);
 
     fileWriter.start();
-    pageWriter.writePages(fileWriter, fileReaders, blockLists);
+    pageAppender.appendPages(fileWriter, fileReaders, blockLists);
     fileWriter.end(Collections.<String, String>emptyMap());
 
     return outputFile;
@@ -102,12 +102,12 @@ public class TestParquetFilePageWriter {
 
   @Before
   public void setUp() throws Exception {
-    testDir = new Path("target/tests/TestParquetFileWriter/");
+    testDir = new Path("target/tests/TestParquetFileAppender/");
     enforceEmptyDir(conf, testDir);
 
     GroupWriteSupport.setSchema(schema, conf);
 
-    pageWriter = new ParquetFilePageWriter(conf, schema, 2 * BLOCK_SIZE,
+    pageAppender = new ParquetFilePageAppender(conf, schema, 2 * BLOCK_SIZE,
         PAGE_SIZE, CODEC_NAME);
   }
 
@@ -135,7 +135,7 @@ public class TestParquetFilePageWriter {
     List<List<BlockMetaData>> blockLists = blockListsFor(files);
     List<ParquetFileReader> fileReaders = fileReadersFor(files, blockLists);
 
-    Path outputFile = writeOutput(fileReaders, blockLists);
+    Path outputFile = appendPages(fileReaders, blockLists);
 
     List<BlockMetaData> blocks = blocksFor(outputFile);
     assertEquals(1, blocks.size());
@@ -181,7 +181,7 @@ public class TestParquetFilePageWriter {
     List<List<BlockMetaData>> blockLists = blockListsFor(files);
     List<ParquetFileReader> fileReaders = fileReadersFor(files, blockLists);
 
-    Path outputFile = writeOutput(fileReaders, blockLists);
+    Path outputFile = appendPages(fileReaders, blockLists);
 
     List<BlockMetaData> blocks = blocksFor(outputFile);
     assertEquals(4, blocks.size());
@@ -210,6 +210,6 @@ public class TestParquetFilePageWriter {
     List<List<BlockMetaData>> blockLists = blockListsFor(files);
     List<ParquetFileReader> fileReaders = fileReadersFor(files, blockLists);
 
-    writeOutput(fileReaders, blockLists);
+    appendPages(fileReaders, blockLists);
   }
 }

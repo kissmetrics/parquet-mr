@@ -52,52 +52,52 @@ class ParquetFilePageWriter {
                   Iterable<ParquetFileReader> fileReaders,
                   Iterable<List<BlockMetaData>> blockLists)
       throws IOException {
-    CodecFactory.BytesCompressor compressor =
+    final CodecFactory.BytesCompressor compressor =
         codecFactory.getCompressor(codecName, pageSize);
-    ColumnChunkPageWriteStore pageWriteStore =
-        new ColumnChunkPageWriteStore(compressor, schema, pageSize);
-    Map<ColumnDescriptor, CopyPageVisitor> copyVisitors
-        = newCopyVisitors(pageWriteStore);
+    final Iterator<List<BlockMetaData>> blockListsIterator = blockLists.iterator();
 
-    final Iterator<List<BlockMetaData>> blockListsIterator
-        = blockLists.iterator();
+    ColumnChunkPageWriteStore pageWriteStore = newWriteStore(compressor);
+    Map<ColumnDescriptor, CopyPageVisitor> copyVisitors = newCopyVisitors(pageWriteStore);
     long bufferedSize = 0L, rowCount = 0L;
 
     for (ParquetFileReader fileReader : fileReaders) {
-      List<BlockMetaData> blocks = blockListsIterator.next();
+      final List<BlockMetaData> blocks = blockListsIterator.next();
 
       for (BlockMetaData block : blocks) {
-        final long blockSize = block.getTotalByteSize();
-        if (bufferedSize + blockSize > rowGroupSize) {
-          flush(fileWriter, rowCount, pageWriteStore);
-          bufferedSize = rowCount = 0L;
-        }
+        bufferedSize += block.getTotalByteSize();
+        rowCount += block.getRowCount();
 
         final List<Chunk> chunks = fileReader.readChunks(block);
         for (Chunk chunk : chunks) {
-          ChunkPageSet pageSet = chunk.readRawPages();
+          final ChunkPageSet pageSet = chunk.readRawPages();
           if (pageSet.hasDictionaryPage())
             throw new IllegalArgumentException("Chunks may not have dictionary pages");
 
           final ColumnDescriptor column = chunk.getColumnDescriptor();
           final CopyPageVisitor copyVisitor = copyVisitors.get(column);
-
-          for (DataPage dataPage : pageSet.getDataPages()) {
+          for (DataPage dataPage : pageSet.getDataPages())
             try {
               dataPage.accept(copyVisitor);
             } catch (CopyPageVisitor.PageWriteException e) {
               throw (IOException)e.getCause();
             }
-          }
         }
 
-        bufferedSize += blockSize;
-        rowCount += block.getRowCount();
+        if (bufferedSize > rowGroupSize) {
+          flush(fileWriter, rowCount, pageWriteStore);
+          pageWriteStore = newWriteStore(compressor);
+          copyVisitors = newCopyVisitors(pageWriteStore);
+          bufferedSize = rowCount = 0L;
+        }
       }
     }
 
     if (bufferedSize > 0L)
       flush(fileWriter, rowCount, pageWriteStore);
+  }
+
+  private ColumnChunkPageWriteStore newWriteStore(CodecFactory.BytesCompressor compressor) {
+    return new ColumnChunkPageWriteStore(compressor, schema, pageSize);
   }
 
   private void flush(ParquetFileWriter fileWriter, long recordCount,
@@ -109,7 +109,7 @@ class ParquetFilePageWriter {
 
   private Map<ColumnDescriptor, CopyPageVisitor> newCopyVisitors(
       PageWriteStore pageWriteStore) {
-    HashMap<ColumnDescriptor, CopyPageVisitor> pageWriters =
+    final HashMap<ColumnDescriptor, CopyPageVisitor> pageWriters =
         new HashMap<ColumnDescriptor, CopyPageVisitor>();
 
     for (ColumnDescriptor column : schema.getColumns()) {

@@ -60,9 +60,8 @@ public class ParquetFileCoalescerTest {
 
     GroupWriteSupport.setSchema(schema, conf);
 
-    final ParquetFilePageAppender pageAppender = new ParquetFilePageAppender(
-        conf, schema, 2 * BLOCK_SIZE, PAGE_SIZE, CODEC_NAME);
-    parquetFileCoalescer = new ParquetFileCoalescer(conf, pageAppender);
+    parquetFileCoalescer = new ParquetFileCoalescer(conf, schema,
+        BLOCK_SIZE, PAGE_SIZE, CODEC_NAME);
 
     // Span two blocks, but leave the final block as a fragment.
     file1 = new Path(testDir, "file1.parquet");

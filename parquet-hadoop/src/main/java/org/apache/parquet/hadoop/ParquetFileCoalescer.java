@@ -4,7 +4,9 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
+import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
+import org.apache.parquet.schema.MessageType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,10 +22,12 @@ public class ParquetFileCoalescer {
   private final Configuration conf;
   private final ParquetFilePageAppender pageAppender;
 
-  public ParquetFileCoalescer(Configuration conf,
-                              ParquetFilePageAppender pageAppender) {
+  public ParquetFileCoalescer(Configuration conf, MessageType schema,
+                              long rowGroupSize, int pageSize,
+                              CompressionCodecName codecName) {
     this.conf = conf;
-    this.pageAppender = pageAppender;
+    this.pageAppender = new ParquetFilePageAppender(conf, schema,
+        rowGroupSize, pageSize, codecName);
   }
 
   /**

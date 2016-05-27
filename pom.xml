@@ -16,6 +16,14 @@
   <url>https://parquet.apache.org</url>
   <description>Parquet is a columnar storage format that supports nested data. This provides the java implementation.</description>
 
+  <distributionManagement>
+    <repository>
+      <id>km-nexus</id>
+      <name>Apache Release Distribution Repository</name>
+      <url>https://maven.kissmetrics.com/nexus/content/repositories/releases/</url>
+    </repository>
+  </distributionManagement>
+
   <scm>
     <connection>scm:git:git@github.com:apache/parquet-mr.git</connection>
     <url>scm:git:git@github.com:apache/parquet-mr.git</url>

@@ -26,7 +26,7 @@
 
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>parquet-avro-km</artifactId>
+  <artifactId>parquet-avro</artifactId>
   <packaging>jar</packaging>
 
   <name>Apache Parquet Avro</name>
@@ -44,7 +44,7 @@
     </dependency>
     <dependency>
       <groupId>com.kissmetrics</groupId>
-      <artifactId>parquet-hadoop-km</artifactId>
+      <artifactId>parquet-hadoop</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

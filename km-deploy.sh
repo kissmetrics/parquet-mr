@@ -15,9 +15,25 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-# TODO: have to put the header here so 'rat' (whatever that is) doesn't complain ... :/
 
-mvn deploy:deploy-file -Durl=https://maven.kissmetrics.com/nexus/content/repositories/releases/ -Dfile=./parquet-hadoop/target/parquet-hadoop-km-1.7.0.jar -DpomFile=./parquet-hadoop/pom.xml -DrepositoryId=km-nexus
+REPOSITORY_URL=https://maven.kissmetrics.com/nexus/content/repositories/releases/
+REPOSITORY_ID=km-nexus
+GROUP_ID=com.kissmetrics
+VERSION=1.7.0-KM-1
 
-mvn deploy:deploy-file -Durl=https://maven.kissmetrics.com/nexus/content/repositories/releases/ -Dfile=./parquet-avro/target/parquet-avro-km-1.7.0.jar -DpomFile=./parquet-avro/pom.xml -DrepositoryId=km-nexus
+for pom in `find . -name pom.xml -mindepth 2`; do
+    dir=`dirname $pom`
+    basename=`basename $dir`
+    file=$dir/target/$basename*-$VERSION.jar
+    if [ -e $file ]; then
+        file=`ls $file`
+        artifact_id=`basename $file | sed s/-1.7.0-KM-1.jar$//`
+        mvn deploy:deploy-file -Durl=$REPOSITORY_URL \
+            -DrepositoryId=$REPOSITORY_ID \
+            -Dfile=$file \
+            -DgroupId=$GROUP_ID \
+            -DartifactId=$artifact_id \
+            -Dversion=$VERSION \
+            -Dpackaging=jar
+    fi
+done

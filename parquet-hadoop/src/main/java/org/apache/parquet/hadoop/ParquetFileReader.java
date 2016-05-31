@@ -736,6 +736,10 @@ public class ParquetFileReader implements Closeable {
       return dictionaryPage;
     }
 
+    public boolean hasDictionaryPage() {
+      return dictionaryPage != null;
+    }
+
     public List<DataPage> getDataPages() {
       return dataPages;
     }

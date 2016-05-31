@@ -61,7 +61,7 @@ import org.apache.parquet.column.page.DataPageV1;
 import org.apache.parquet.column.page.DataPageV2;
 import org.apache.parquet.column.page.DictionaryPage;
 import org.apache.parquet.column.page.PageReadStore;
-import org.apache.parquet.hadoop.metadata.ColumnPath;
+import org.apache.parquet.hadoop.metadata.*;
 import org.apache.parquet.format.DataPageHeader;
 import org.apache.parquet.format.DataPageHeaderV2;
 import org.apache.parquet.format.DictionaryPageHeader;
@@ -484,23 +484,14 @@ public class ParquetFileReader implements Closeable {
     writer.appendRowGroups(f, blocks, true);
   }
 
-  /**
-   * Reads all the columns requested from the row group at the current file position.
-   * @throws IOException if an error occurs while reading
-   * @return the PageReadStore which can provide PageReaders for each column.
-   */
-  public PageReadStore readNextRowGroup() throws IOException {
-    if (currentBlock == blocks.size()) {
-      return null;
-    }
-    BlockMetaData block = blocks.get(currentBlock);
+  List<Chunk> readChunks(BlockMetaData block) throws IOException {
     if (block.getRowCount() == 0) {
       throw new RuntimeException("Illegal row group of 0 rows");
     }
-    ColumnChunkPageReadStore columnChunkPageReadStore = new ColumnChunkPageReadStore(block.getRowCount());
     // prepare the list of consecutive chunks to read them in one scan
     List<ConsecutiveChunkList> allChunks = new ArrayList<ConsecutiveChunkList>();
     ConsecutiveChunkList currentChunks = null;
+    int chunkCount = 0;
     for (ColumnChunkMetaData mc : block.getColumns()) {
       ColumnPath pathKey = mc.getPath();
       BenchmarkCounter.incrementTotalBytes(mc.getTotalSize());
@@ -513,16 +504,43 @@ public class ParquetFileReader implements Closeable {
           allChunks.add(currentChunks);
         }
         currentChunks.addChunk(new ChunkDescriptor(columnDescriptor, mc, startingPos, (int)mc.getTotalSize()));
+        chunkCount++;
       }
     }
     // actually read all the chunks
+    List<Chunk> chunkList = new ArrayList<Chunk>(chunkCount);
     for (ConsecutiveChunkList consecutiveChunks : allChunks) {
       final List<Chunk> chunks = consecutiveChunks.readAll(f);
       for (Chunk chunk : chunks) {
-        columnChunkPageReadStore.addColumn(chunk.descriptor.col, chunk.readAllPages());
+        chunkList.add(chunk);
       }
     }
+    return chunkList;
+  }
+
+  BlockMetaData getCurrentBlock() {
+    return (currentBlock >= blocks.size()) ? null : blocks.get(currentBlock);
+  }
+
+  void advanceBlock() {
     ++currentBlock;
+  }
+
+  /**
+   * Reads all the columns requested from the row group at the current file position.
+   * @throws IOException if an error occurs while reading
+   * @return the PageReadStore which can provide PageReaders for each column.
+   */
+  public PageReadStore readNextRowGroup() throws IOException {
+    BlockMetaData block = getCurrentBlock();
+    if (block == null) {
+      return null;
+    }
+    ColumnChunkPageReadStore columnChunkPageReadStore = new ColumnChunkPageReadStore(block.getRowCount());
+    for (Chunk chunk : readChunks(block)) {
+      columnChunkPageReadStore.addColumn(chunk.descriptor.col, chunk.readAllPages());
+    }
+    advanceBlock();
     return columnChunkPageReadStore;
   }
 
@@ -540,7 +558,7 @@ public class ParquetFileReader implements Closeable {
    * @author Julien Le Dem
    *
    */
-  private class Chunk extends ByteArrayInputStream {
+  class Chunk extends ByteArrayInputStream {
 
     private final ChunkDescriptor descriptor;
 
@@ -556,15 +574,15 @@ public class ParquetFileReader implements Closeable {
       this.pos = offset;
     }
 
+    ColumnDescriptor getColumnDescriptor() {
+      return descriptor.col;
+    }
+
     protected PageHeader readPageHeader() throws IOException {
       return Util.readPageHeader(this);
     }
 
-    /**
-     * Read all of the pages in a given column chunk.
-     * @return the list of pages
-     */
-    public ColumnChunkPageReader readAllPages() throws IOException {
+    public ChunkPageSet readRawPages() throws IOException {
       List<DataPage> pagesInChunk = new ArrayList<DataPage>();
       DictionaryPage dictionaryPage = null;
       long valuesCountReadSoFar = 0;
@@ -639,8 +657,17 @@ public class ParquetFileReader implements Closeable {
             " but got " + valuesCountReadSoFar + " values instead over " + pagesInChunk.size()
             + " pages ending at file offset " + (descriptor.fileOffset + pos()));
       }
+      return new ChunkPageSet(dictionaryPage, pagesInChunk);
+    }
+
+    /**
+     * Read all of the pages in a given column chunk.
+     * @return the list of pages
+     */
+    public ColumnChunkPageReader readAllPages() throws IOException {
       BytesDecompressor decompressor = codecFactory.getDecompressor(descriptor.metadata.getCodec());
-      return new ColumnChunkPageReader(decompressor, pagesInChunk, dictionaryPage);
+      ChunkPageSet pageSet = readRawPages();
+      return new ColumnChunkPageReader(decompressor, pageSet.dataPages, pageSet.dictionaryPage);
     }
 
     /**
@@ -718,6 +745,24 @@ public class ParquetFileReader implements Closeable {
 
   }
 
+  static class ChunkPageSet {
+
+    private final DictionaryPage dictionaryPage;
+    private final List<DataPage> dataPages;
+
+    private ChunkPageSet(DictionaryPage dictionaryPage, List<DataPage> dataPages) {
+      this.dictionaryPage = dictionaryPage;
+      this.dataPages = dataPages;
+    }
+
+    public DictionaryPage getDictionaryPage() {
+      return dictionaryPage;
+    }
+
+    public List<DataPage> getDataPages() {
+      return dataPages;
+    }
+  }
 
   /**
    * information needed to read a column chunk

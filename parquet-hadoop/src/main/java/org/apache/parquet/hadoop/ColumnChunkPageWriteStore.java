@@ -74,28 +74,19 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
     }
 
     @Override
-    public void writePage(BytesInput bytes,
-                          int valueCount,
-                          Statistics statistics,
-                          Encoding rlEncoding,
-                          Encoding dlEncoding,
-                          Encoding valuesEncoding) throws IOException {
-      long uncompressedSize = bytes.size();
-      if (uncompressedSize > Integer.MAX_VALUE) {
-        throw new ParquetEncodingException(
-            "Cannot write page larger than Integer.MAX_VALUE bytes: " +
-            uncompressedSize);
-      }
-      BytesInput compressedBytes = compressor.compress(bytes);
+    public void writeCompressedPage(BytesInput compressedBytes, int uncompressedSize,
+                                    int valueCount, Statistics<?> statistics,
+                                    Encoding rlEncoding, Encoding dlEncoding,
+                                    Encoding valuesEncoding) throws IOException {
       long compressedSize = compressedBytes.size();
       if (compressedSize > Integer.MAX_VALUE) {
         throw new ParquetEncodingException(
             "Cannot write compressed page larger than Integer.MAX_VALUE bytes: "
-            + compressedSize);
+                + compressedSize);
       }
       tempOutputStream.reset();
       parquetMetadataConverter.writeDataPageHeader(
-          (int)uncompressedSize,
+          uncompressedSize,
           (int)compressedSize,
           valueCount,
           statistics,
@@ -117,18 +108,30 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
     }
 
     @Override
-    public void writePageV2(
-        int rowCount, int nullCount, int valueCount,
-        BytesInput repetitionLevels, BytesInput definitionLevels,
-        Encoding dataEncoding, BytesInput data,
-        Statistics<?> statistics) throws IOException {
+    public void writePage(BytesInput bytes,
+                          int valueCount,
+                          Statistics statistics,
+                          Encoding rlEncoding,
+                          Encoding dlEncoding,
+                          Encoding valuesEncoding) throws IOException {
+      long uncompressedSize = bytes.size();
+      if (uncompressedSize > Integer.MAX_VALUE) {
+        throw new ParquetEncodingException(
+            "Cannot write page larger than Integer.MAX_VALUE bytes: " +
+            uncompressedSize);
+      }
+      BytesInput compressedBytes = compressor.compress(bytes);
+      writeCompressedPage(compressedBytes, (int)uncompressedSize, valueCount,
+          statistics, rlEncoding, dlEncoding, valuesEncoding);
+    }
+
+    @Override
+    public void writeCompressedPageV2(int rowCount, int nullCount, int valueCount,
+                                      BytesInput repetitionLevels, BytesInput definitionLevels,
+                                      Encoding dataEncoding, BytesInput compressedData,
+                                      int uncompressedSize, Statistics<?> statistics) throws IOException {
       int rlByteLength = toIntWithCheck(repetitionLevels.size());
       int dlByteLength = toIntWithCheck(definitionLevels.size());
-      int uncompressedSize = toIntWithCheck(
-          data.size() + repetitionLevels.size() + definitionLevels.size()
-      );
-      // TODO: decide if we compress
-      BytesInput compressedData = compressor.compress(data);
       int compressedSize = toIntWithCheck(
           compressedData.size() + repetitionLevels.size() + definitionLevels.size()
       );
@@ -151,12 +154,28 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
       // we only allocate one buffer to copy into instead of multiple.
       buf.collect(
           BytesInput.concat(
-            BytesInput.from(tempOutputStream),
-            repetitionLevels,
-            definitionLevels,
-            compressedData)
+              BytesInput.from(tempOutputStream),
+              repetitionLevels,
+              definitionLevels,
+              compressedData)
       );
       encodings.add(dataEncoding);
+    }
+
+    @Override
+    public void writePageV2(
+        int rowCount, int nullCount, int valueCount,
+        BytesInput repetitionLevels, BytesInput definitionLevels,
+        Encoding dataEncoding, BytesInput data,
+        Statistics<?> statistics) throws IOException {
+      int uncompressedSize = toIntWithCheck(
+          data.size() + repetitionLevels.size() + definitionLevels.size()
+      );
+      // TODO: decide if we compress
+      BytesInput compressedData = compressor.compress(data);
+      writeCompressedPageV2(rowCount, nullCount, valueCount, repetitionLevels,
+          definitionLevels, dataEncoding, compressedData, uncompressedSize,
+          statistics);
     }
 
     private int toIntWithCheck(long size) {

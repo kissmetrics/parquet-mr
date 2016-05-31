@@ -45,7 +45,21 @@ public class MemPageWriter implements PageWriter {
   private long totalValueCount = 0;
 
   @Override
-  public void writePage(BytesInput bytesInput, int valueCount, Statistics statistics, Encoding rlEncoding, Encoding dlEncoding, Encoding valuesEncoding)
+  public void writeCompressedPage(BytesInput compressedBytes, int uncompressedSize,
+                                  int valueCount, Statistics<?> statistics,
+                                  Encoding rlEncoding, Encoding dlEncoding,
+                                  Encoding valuesEncoding) throws IOException {
+    if (valueCount == 0) {
+      throw new ParquetEncodingException("illegal page of 0 values");
+    }
+    memSize += compressedBytes.size();
+    pages.add(new DataPageV1(BytesInput.copy(compressedBytes), valueCount, uncompressedSize, statistics, rlEncoding, dlEncoding, valuesEncoding));
+    totalValueCount += valueCount;
+    if (DEBUG) LOG.debug("compressed page written for " + compressedBytes.size() + " bytes and " + valueCount + " records");
+  }
+
+  @Override
+  public void writePage(BytesInput bytesInput, int valueCount, Statistics<?> statistics, Encoding rlEncoding, Encoding dlEncoding, Encoding valuesEncoding)
       throws IOException {
     if (valueCount == 0) {
       throw new ParquetEncodingException("illegal page of 0 values");
@@ -54,6 +68,22 @@ public class MemPageWriter implements PageWriter {
     pages.add(new DataPageV1(BytesInput.copy(bytesInput), valueCount, (int)bytesInput.size(), statistics, rlEncoding, dlEncoding, valuesEncoding));
     totalValueCount += valueCount;
     if (DEBUG) LOG.debug("page written for " + bytesInput.size() + " bytes and " + valueCount + " records");
+  }
+
+  @Override
+  public void writeCompressedPageV2(int rowCount, int nullCount, int valueCount,
+                                    BytesInput repetitionLevels, BytesInput definitionLevels,
+                                    Encoding dataEncoding, BytesInput compressedData,
+                                    int uncompressedSize, Statistics<?> statistics) throws IOException {
+    if (valueCount == 0) {
+      throw new ParquetEncodingException("illegal page of 0 values");
+    }
+    long size = repetitionLevels.size() + definitionLevels.size() + compressedData.size();
+    memSize += size;
+    DataPageV2.compressed(rowCount, nullCount, valueCount, repetitionLevels, definitionLevels,
+        dataEncoding, copy(compressedData), uncompressedSize, statistics);
+    totalValueCount += valueCount;
+    if (DEBUG) LOG.debug("compressed page written for " + size + " bytes and " + valueCount + " records");
   }
 
   @Override

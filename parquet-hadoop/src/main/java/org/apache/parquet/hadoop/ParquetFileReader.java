@@ -61,6 +61,7 @@ import org.apache.parquet.column.page.DataPageV1;
 import org.apache.parquet.column.page.DataPageV2;
 import org.apache.parquet.column.page.DictionaryPage;
 import org.apache.parquet.column.page.PageReadStore;
+import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.hadoop.metadata.*;
 import org.apache.parquet.format.DataPageHeader;
 import org.apache.parquet.format.DataPageHeaderV2;
@@ -566,6 +567,10 @@ public class ParquetFileReader implements Closeable {
 
     ColumnDescriptor getColumnDescriptor() {
       return descriptor.col;
+    }
+
+    Statistics getStatistics() {
+      return descriptor.metadata.getStatistics();
     }
 
     protected PageHeader readPageHeader() throws IOException {

@@ -506,6 +506,13 @@ public class ParquetFileReader implements Closeable {
     ++currentBlock;
   }
 
+  public void appendCurrentBlock(ParquetFileWriter writer) throws IOException {
+    if (currentBlock < blocks.size()) {
+      final BlockMetaData block = blocks.get(currentBlock);
+      writer.appendRowGroup(f, block, true);
+    }
+  }
+
   /**
    * Reads all the columns requested from the row group at the current file position.
    * @throws IOException if an error occurs while reading

@@ -156,7 +156,8 @@ public class ParquetFileTransformer implements Closeable {
     for (final Chunk chunk : chunks) {
       final ColumnDescriptor column = chunk.getColumnDescriptor();
       final ColumnTransformer transformer = transformers.get(column);
-      if (transformer != null)
+      if (transformer != null
+          && transformer.shouldTransform(chunk.getStatistics()))
         transformChunk(schema, block, columnWriteStore, chunk, column,
             transformer);
       else {

@@ -21,6 +21,7 @@ package org.apache.parquet.hadoop.transform;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.hadoop.ColumnTransformer;
 
 /**
@@ -32,6 +33,11 @@ public abstract class ColumnTransformerBase implements ColumnTransformer {
 
   public ColumnTransformerBase(ColumnDescriptor column) {
     this.column = column;
+  }
+
+  @Override
+  public boolean shouldTransform(Statistics statistics) {
+    return true;
   }
 
   @Override

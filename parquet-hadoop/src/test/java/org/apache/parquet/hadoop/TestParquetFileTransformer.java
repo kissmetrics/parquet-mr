@@ -21,9 +21,9 @@ package org.apache.parquet.hadoop;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.column.ColumnDescriptor;
-import org.apache.parquet.column.ColumnReader;
-import org.apache.parquet.column.ColumnWriter;
 import org.apache.parquet.column.ParquetProperties;
+import org.apache.parquet.column.statistics.IntStatistics;
+import org.apache.parquet.column.statistics.LongStatistics;
 import org.apache.parquet.example.data.Group;
 import org.apache.parquet.example.data.simple.SimpleGroupFactory;
 import org.apache.parquet.hadoop.example.GroupReadSupport;
@@ -32,23 +32,24 @@ import org.apache.parquet.hadoop.metadata.BlockMetaData;
 import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
-import org.apache.parquet.hadoop.transform.ColumnTransformerBase;
 import org.apache.parquet.hadoop.transform.IntegerColumnTransformer;
-import org.apache.parquet.io.api.Binary;
+import org.apache.parquet.hadoop.transform.LongColumnTransformer;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.Types;
 import org.junit.Before;
 import org.junit.Test;
 import java.io.IOException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Random;
 import static org.apache.parquet.column.ParquetProperties.WriterVersion.PARQUET_1_0;
 import static org.apache.parquet.format.converter.ParquetMetadataConverter.NO_FILTER;
 import static org.apache.parquet.hadoop.TestUtils.enforceEmptyDir;
 import static org.apache.parquet.hadoop.metadata.CompressionCodecName.GZIP;
 import static org.apache.parquet.schema.OriginalType.UTF8;
-import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.BINARY;
-import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32;
-import static org.junit.Assert.*;
+import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 public class TestParquetFileTransformer {
 
@@ -58,28 +59,25 @@ public class TestParquetFileTransformer {
   private static final int DICTIONARY_PAGE_SIZE = 512;
   private static final boolean ENABLE_DICTIONARY = true;
   private static final ParquetProperties.WriterVersion WRITER_VERSION = PARQUET_1_0;
-  private static final int RECORD_COUNT = 50;
+  private static final int RECORD_COUNT = 250;  // 3 row groups of 100, 100, 50
 
   private final Configuration conf = new Configuration();
 
   private final MessageType schema = Types.buildMessage()
       .required(INT32).named("id")
-      .required(BINARY).as(UTF8).named("uuid")
-      .optional(INT32).named("timestamp")
+      .optional(INT64).named("timestamp")
+      .required(BINARY).as(UTF8).named("name")
       .named("TransformTest");
 
   private final SimpleGroupFactory groupFactory = new SimpleGroupFactory(schema);
   private final Random random = new Random();
   private Path testDir, inputFile, outputFile;
 
-  private Group randomRecord(int i) {
-    int id = (i * 10) + random.nextInt(10);
-    String uuid = UUID.randomUUID().toString();
-    Group group = groupFactory.newGroup()
-        .append("id", id)
-        .append("uuid", uuid);
-    if (random.nextDouble() > 0.5)
-      group.append("timestamp", 1460000000 + random.nextInt(10000000));
+  private Group newRecord(int i) {
+    Group group = groupFactory.newGroup().append("id", i);
+    if (i % 2 == 0)
+      group.append("timestamp", 1000L * (1400000000L + i));
+    group.append("name", String.format("Record %d", i));
     return group;
   }
 
@@ -94,7 +92,7 @@ public class TestParquetFileTransformer {
         DICTIONARY_PAGE_SIZE, ENABLE_DICTIONARY, false, WRITER_VERSION, conf);
 
     for (int i = 0; i < RECORD_COUNT; i++)
-      writer.write(randomRecord(i));
+      writer.write(newRecord(i));
 
     writer.close();
   }
@@ -102,24 +100,33 @@ public class TestParquetFileTransformer {
   private void transformFile() throws IOException {
     List<ColumnDescriptor> columnDescriptors = schema.getColumns();
     ColumnDescriptor idColumn = columnDescriptors.get(0),
-        uuidColumn = columnDescriptors.get(1);
+        timestampColumn = columnDescriptors.get(1);
 
     HashMap<ColumnDescriptor, ColumnTransformer> transformers =
         new HashMap<ColumnDescriptor, ColumnTransformer>();
 
     transformers.put(idColumn, new IntegerColumnTransformer(idColumn) {
       @Override
+      protected boolean shouldTransform(IntStatistics statistics) {
+        return statistics.getMin() >= 100;  // Transform the second and third blocks
+      }
+
+      @Override
       protected int transformValue(int value) {
         return 2 * value;
       }
     });
 
-    transformers.put(uuidColumn, new ColumnTransformerBase(uuidColumn) {
+    transformers.put(timestampColumn, new LongColumnTransformer(timestampColumn) {
       @Override
-      protected void processValue(int repetitionLevel, int definitionLevel, ColumnReader reader, ColumnWriter writer) {
-        Binary value = reader.getBinary();
-        Binary transformedValue = Binary.fromString(value.toStringUsingUTF8().substring(0, 8));
-        writer.write(transformedValue, repetitionLevel, definitionLevel);
+      protected boolean shouldTransform(LongStatistics statistics) {
+        return (statistics.getMin() >= 1400000100000L
+            && statistics.getMax() < 1400000200000L);  // Transform just the second block
+      }
+
+      @Override
+      protected long transformValue(long value) {
+        return value + 86400L;
       }
     });
 
@@ -172,7 +179,7 @@ public class TestParquetFileTransformer {
 
   private void assertColumnMetadataEquivalent(ColumnChunkMetaData expected,
                                               ColumnChunkMetaData actual) {
-    assertEquals(expected.getPath(), expected.getPath());
+    assertEquals(expected.getPath(), actual.getPath());
     assertEquals(expected.getType(), actual.getType());
     assertEquals(expected.getCodec(), actual.getCodec());
     assertEquals(expected.getEncodings(), actual.getEncodings());
@@ -180,7 +187,7 @@ public class TestParquetFileTransformer {
   }
 
   @Test
-  public void testTransformedColumns() throws Exception {
+  public void testTransformation() throws Exception {
     ParquetReader<Group> inputReader = ParquetReader.builder(
         new GroupReadSupport(), inputFile).build();
     ParquetReader<Group> outputReader = ParquetReader.builder(
@@ -190,40 +197,24 @@ public class TestParquetFileTransformer {
     while ((outputGroup = outputReader.read()) != null) {
       Group inputGroup = inputReader.read();
 
-      int expectedId = 2 * inputGroup.getInteger("id", 0);
+      // Note that the first block should be copied verbatim since no
+      // transformations apply.
+      int inputId = inputGroup.getInteger("id", 0);
+      int expectedId = (inputId >= 100) ? (2 * inputId) : inputId;
       assertEquals(expectedId, outputGroup.getInteger("id", 0));
 
-      String expectedUuid = inputGroup.getString("uuid", 0).substring(0, 8);
-      assertEquals(expectedUuid, outputGroup.getString("uuid", 0));
-    }
-
-    assertNull(inputReader.read());
-    assertNull(outputReader.read());
-  }
-
-  @Test
-  public void testCopiedColumns() throws Exception {
-    ParquetReader<Group> inputReader = ParquetReader.builder(
-        new GroupReadSupport(), inputFile).build();
-    ParquetReader<Group> outputReader = ParquetReader.builder(
-        new GroupReadSupport(), outputFile).build();
-
-    Group outputGroup;
-    while ((outputGroup = outputReader.read()) != null) {
-      Group inputGroup = inputReader.read();
-      int inputTimestamp = 0, outputTimestamp;
-      try {
-        inputTimestamp = inputGroup.getInteger("timestamp", 0);
-      } catch (RuntimeException e1) {
-        try {
-          outputGroup.getInteger("timestamp", 0);
-          fail("Expected RuntimeException for null group");
-        } catch (RuntimeException e2) {
-          continue;
-        }
+      if (inputGroup.getFieldRepetitionCount("timestamp") == 0)
+        assertEquals(0, outputGroup.getFieldRepetitionCount("timestamp"));
+      else {
+        long inputTimestamp = inputGroup.getLong("timestamp", 0);
+        long expectedTimestamp =
+            (inputTimestamp >= 1400000100000L && inputTimestamp < 1400000200000L)
+                ? inputTimestamp + 86400L : inputTimestamp;
+        assertEquals(expectedTimestamp, outputGroup.getLong("timestamp", 0));
       }
-      outputTimestamp = outputGroup.getInteger("timestamp", 0);
-      assertEquals(inputTimestamp, outputTimestamp);
+
+      String expectedName = inputGroup.getString("name", 0);
+      assertEquals(expectedName, outputGroup.getString("name", 0));
     }
 
     assertNull(inputReader.read());

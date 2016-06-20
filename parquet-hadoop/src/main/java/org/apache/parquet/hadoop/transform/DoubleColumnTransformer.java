@@ -21,6 +21,8 @@ package org.apache.parquet.hadoop.transform;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.column.statistics.DoubleStatistics;
+import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.schema.PrimitiveType;
 
 public abstract class DoubleColumnTransformer extends ColumnTransformerBase {
@@ -29,6 +31,15 @@ public abstract class DoubleColumnTransformer extends ColumnTransformerBase {
     super(column);
     if (column.getType() != PrimitiveType.PrimitiveTypeName.INT64)
       throw new IllegalArgumentException("Column must contain doubles");
+  }
+
+  @Override
+  public boolean shouldTransform(Statistics statistics) {
+    return shouldTransform((DoubleStatistics)statistics);
+  }
+
+  protected boolean shouldTransform(DoubleStatistics statistics) {
+    return true;
   }
 
   @Override

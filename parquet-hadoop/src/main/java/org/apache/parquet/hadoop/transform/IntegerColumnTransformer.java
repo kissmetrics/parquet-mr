@@ -21,6 +21,8 @@ package org.apache.parquet.hadoop.transform;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.column.statistics.IntStatistics;
+import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.schema.PrimitiveType;
 
 public abstract class IntegerColumnTransformer extends ColumnTransformerBase {
@@ -29,6 +31,15 @@ public abstract class IntegerColumnTransformer extends ColumnTransformerBase {
     super(column);
     if (column.getType() != PrimitiveType.PrimitiveTypeName.INT32)
       throw new IllegalArgumentException("Column must contain integers");
+  }
+
+  @Override
+  public boolean shouldTransform(Statistics statistics) {
+    return shouldTransform((IntStatistics)statistics);
+  }
+
+  protected boolean shouldTransform(IntStatistics statistics) {
+    return true;
   }
 
   @Override

@@ -21,6 +21,8 @@ package org.apache.parquet.hadoop.transform;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.column.statistics.BooleanStatistics;
+import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.schema.PrimitiveType;
 
 public abstract class BooleanColumnTransformer extends ColumnTransformerBase {
@@ -29,6 +31,16 @@ public abstract class BooleanColumnTransformer extends ColumnTransformerBase {
     super(column);
     if (column.getType() != PrimitiveType.PrimitiveTypeName.BOOLEAN)
       throw new IllegalArgumentException("Column must contain Booleans");
+  }
+
+
+  @Override
+  public boolean shouldTransform(Statistics statistics) {
+    return shouldTransform((BooleanStatistics)statistics);
+  }
+
+  protected boolean shouldTransform(BooleanStatistics statistics) {
+    return true;
   }
 
   @Override

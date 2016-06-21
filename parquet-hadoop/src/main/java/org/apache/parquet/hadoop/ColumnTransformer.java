@@ -20,11 +20,21 @@ package org.apache.parquet.hadoop;
 
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.column.statistics.Statistics;
+import org.apache.parquet.hadoop.metadata.ColumnChunkMetaData;
 
 /**
  * Transformer of column values
  */
 public interface ColumnTransformer {
+
+  /**
+   * Checks whether a column should be transformed given its statistics.
+   *
+   * @param statistics Statistics of the column to transform
+   * @return Whether to transform the column
+   */
+  boolean shouldTransform(Statistics statistics);
 
   /**
    * Writes a transformed column value.

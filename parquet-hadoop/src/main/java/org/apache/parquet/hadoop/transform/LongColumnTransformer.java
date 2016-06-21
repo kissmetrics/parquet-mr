@@ -21,6 +21,8 @@ package org.apache.parquet.hadoop.transform;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.ColumnReader;
 import org.apache.parquet.column.ColumnWriter;
+import org.apache.parquet.column.statistics.LongStatistics;
+import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.schema.PrimitiveType;
 
 public abstract class LongColumnTransformer extends ColumnTransformerBase {
@@ -29,6 +31,15 @@ public abstract class LongColumnTransformer extends ColumnTransformerBase {
     super(column);
     if (column.getType() != PrimitiveType.PrimitiveTypeName.INT64)
       throw new IllegalArgumentException("Column must contain long integers");
+  }
+
+  @Override
+  public boolean shouldTransform(Statistics statistics) {
+    return shouldTransform((LongStatistics)statistics);
+  }
+
+  protected boolean shouldTransform(LongStatistics statistics) {
+    return true;
   }
 
   @Override
